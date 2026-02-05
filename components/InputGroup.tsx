@@ -10,13 +10,15 @@ interface InputGroupProps {
 
 const InputGroup: React.FC<InputGroupProps> = ({ label, icon, children, description }) => {
   return (
-    <div className="flex flex-col space-y-1.5 w-full">
-      <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-        {icon}
+    <div className="flex flex-col space-y-2 w-full group">
+      <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2 group-focus-within:text-red-600 transition-colors">
+        <span className="opacity-70">{icon}</span>
         {label}
       </label>
-      {children}
-      {description && <p className="text-xs text-slate-400 italic">{description}</p>}
+      <div className="relative">
+        {children}
+      </div>
+      {description && <p className="text-[9px] text-slate-400 font-medium italic pl-1 leading-tight">{description}</p>}
     </div>
   );
 };

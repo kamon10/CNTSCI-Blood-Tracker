@@ -2,20 +2,10 @@
 import { GoogleGenAI } from "@google/genai";
 import { DistributionData } from "../types.ts";
 
-const getApiKey = () => {
-  try {
-    return (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : "";
-  } catch (e) {
-    return "";
-  }
-};
-
-const apiKey = getApiKey();
-const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+// Always initialize with a named parameter using process.env.API_KEY directly.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const analyzeDistribution = async (data: DistributionData) => {
-  if (!ai) return "Analyse IA non configurée.";
-  
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -34,8 +24,10 @@ export const analyzeDistribution = async (data: DistributionData) => {
       },
     });
 
-    return response.text;
+    // Access the .text property directly (it is not a method).
+    return response.text || "Analyse indisponible.";
   } catch (error) {
+    console.error("Gemini API Error:", error);
     return "Analyse indisponible.";
   }
 };

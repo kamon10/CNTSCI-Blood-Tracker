@@ -2,10 +2,21 @@
 import { GoogleGenAI } from "@google/genai";
 import { DistributionData } from "../types.ts";
 
-// Always initialize with a named parameter using process.env.API_KEY directly.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Sécurisation de l'accès à l'API KEY pour éviter les erreurs ReferenceError: process is not defined
+const getApiKey = () => {
+  try {
+    return process.env.API_KEY || "";
+  } catch (e) {
+    return "";
+  }
+};
+
+const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
 export const analyzeDistribution = async (data: DistributionData) => {
+  const apiKey = getApiKey();
+  if (!apiKey) return "Analyse indisponible (Clé API manquante).";
+
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -24,7 +35,6 @@ export const analyzeDistribution = async (data: DistributionData) => {
       },
     });
 
-    // Access the .text property directly (it is not a method).
     return response.text || "Analyse indisponible.";
   } catch (error) {
     console.error("Gemini API Error:", error);

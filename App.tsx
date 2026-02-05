@@ -17,7 +17,8 @@ const App: React.FC = () => {
   
   const [scriptUrl, setScriptUrl] = useState<string>(() => {
     try {
-      return localStorage.getItem('cntsci_script_url_v15') || DEFAULT_URL;
+      const saved = localStorage.getItem('cntsci_script_url_v15');
+      return saved || DEFAULT_URL;
     } catch {
       return DEFAULT_URL;
     }
@@ -50,7 +51,7 @@ const App: React.FC = () => {
   const [records, setRecords] = useState<DistributionData[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
-  const [showToast, setShowToast] = useState<'success' | 'error' | 'sync' | 'auth_error' | 'url_saved' | 'auto_login' | null>(null);
+  const [showToast, setShowToast] = useState<'success' | 'error' | 'sync' | 'auth_error' | 'url_saved' | null>(null);
 
   const isAgentAuthenticated = useMemo(() => {
     if (!currentUser) return false;
@@ -101,7 +102,7 @@ const App: React.FC = () => {
         }
       }
     } catch (e) {
-      console.error("Erreur Sync:", e);
+      console.error("Erreur de synchronisation:", e);
       if (showNotification) setShowToast('error');
     } finally {
       setIsSyncing(false);
@@ -119,6 +120,8 @@ const App: React.FC = () => {
     setIsLoggingIn(true);
     try {
       const resp = await fetch(`${scriptUrl.trim()}?action=get_users&_t=${Date.now()}`);
+      if (!resp.ok) throw new Error("Réponse serveur incorrecte");
+      
       const users: User[] = await resp.json();
       const found = users.find(u => 
         String(u.login).trim().toLowerCase() === loginData.login.trim().toLowerCase() && 
@@ -134,6 +137,7 @@ const App: React.FC = () => {
         setShowToast('auth_error');
       }
     } catch (err) {
+      console.error("Login error:", err);
       setShowToast('error');
     } finally {
       setIsLoggingIn(false);
@@ -230,6 +234,7 @@ const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* BOUTON CONNECTER AGENT POUR VISITEURS */}
             {!isAgentAuthenticated && (
               <button 
                 onClick={() => setActiveTab('form')}
@@ -260,6 +265,7 @@ const App: React.FC = () => {
           </div>
         </div>
         
+        {/* MOBILE CONNECT BUTTON */}
         {!isAgentAuthenticated && (
           <div className="md:hidden mt-4 px-2">
             <button 
@@ -267,7 +273,7 @@ const App: React.FC = () => {
               className="w-full flex items-center justify-center gap-3 bg-red-600 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-red-600/20 active:scale-95 transition-all"
             >
               <i className="fa-solid fa-user-shield"></i>
-              Connecter Agent
+              Connecter un compte Agent
             </button>
           </div>
         )}
@@ -319,7 +325,7 @@ const App: React.FC = () => {
               <div className="w-20 h-20 bg-slate-50 rounded-[2rem] flex items-center justify-center text-slate-200 text-4xl mx-auto mb-8 shadow-inner">
                 <i className="fa-solid fa-lock"></i>
               </div>
-              <h2 className="text-xl font-black uppercase text-slate-900 tracking-tighter">Accès Restreint</h2>
+              <h2 className="text-xl font-black uppercase text-slate-900 tracking-tighter">Section Réservée</h2>
               <p className="text-[10px] text-slate-400 font-bold uppercase mt-2 max-w-xs mx-auto leading-relaxed">
                 Le tableau de bord de centre est réservé aux agents authentifiés.
               </p>

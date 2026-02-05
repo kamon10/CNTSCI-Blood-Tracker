@@ -143,15 +143,8 @@ const App: React.FC = () => {
     setAiAnalysis(null);
   };
 
-  const filteredCenters = useMemo(() => {
-    return CNTSCI_CENTERS.filter(c => 
-      c.toLowerCase().includes(centerSearch.toLowerCase())
-    );
-  }, [centerSearch]);
-
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20 selection:bg-red-100">
-      {/* Background Accents */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[-15%] right-[-10%] w-[50%] h-[50%] bg-red-500/5 blur-[120px] rounded-full animate-pulse"></div>
         <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-500/5 blur-[100px] rounded-full"></div>
@@ -187,7 +180,7 @@ const App: React.FC = () => {
               onClick={() => setActiveTab('recap')} 
               className={`px-8 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${activeTab === 'recap' ? 'bg-white text-slate-900 shadow-xl scale-105' : 'text-slate-400 hover:text-white'}`}
             >
-              <i className="fa-solid fa-chart-pie mr-2"></i>Analyse
+              <i className="fa-solid fa-chart-column mr-2"></i>RECAP
             </button>
           </div>
 
@@ -327,7 +320,6 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Dynamic Notifications */}
       {showToast === 'success' && (
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-10 py-5 rounded-[2rem] shadow-2xl border border-white/10 flex items-center gap-5 z-[200] animate-in slide-in-from-bottom-12">
           <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white text-lg">

@@ -234,7 +234,6 @@ const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* BOUTON CONNECTER AGENT POUR VISITEURS */}
             {!isAgentAuthenticated && (
               <button 
                 onClick={() => setActiveTab('form')}
@@ -265,7 +264,6 @@ const App: React.FC = () => {
           </div>
         </div>
         
-        {/* MOBILE CONNECT BUTTON */}
         {!isAgentAuthenticated && (
           <div className="md:hidden mt-4 px-2">
             <button 
@@ -341,7 +339,7 @@ const App: React.FC = () => {
 
         {activeTab === 'form' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-            <div className="lg:col-span-7">
+            <div className={isAgentAuthenticated ? "lg:col-span-7" : "lg:col-span-12 max-w-2xl mx-auto w-full"}>
               {!isAgentAuthenticated ? (
                 <div className="bg-white p-12 rounded-[3rem] shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-500">
                   <div className="mb-10 text-center">
@@ -449,9 +447,12 @@ const App: React.FC = () => {
               )}
             </div>
             
-            <div className="lg:col-span-5">
-              <HistoryList records={records} />
-            </div>
+            {/* FLUX D'ACTIVITÉ MASQUÉ POUR LE VISITEUR SUR LA PAGE DE CONNEXION */}
+            {isAgentAuthenticated && (
+              <div className="lg:col-span-5">
+                <HistoryList records={records} />
+              </div>
+            )}
           </div>
         )}
       </main>

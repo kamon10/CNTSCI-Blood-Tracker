@@ -34,129 +34,201 @@ const RecapView: React.FC<RecapViewProps> = ({ records, lastSync, onRefresh, isS
     return { d: '', m: '', y: '' };
   };
 
-  const filteredRecords = useMemo(() => {
-    return records.filter(r => {
+  // Agrégation Annuelle
+  const yearlyStats = useMemo(() => {
+    const yearRecords = records.filter(r => {
+      const { y } = parseDateRobust(String(r.dateDistribution || ""));
+      return y === selectedYear && (selectedSite === 'TOUS LES SITES' || r.centreCntsci === selectedSite);
+    });
+
+    let cgrA = 0, cgrP = 0, plasma = 0, plaq = 0;
+    yearRecords.forEach(r => {
+      cgrA += Number(r.nbCgrAdulte) || 0;
+      cgrP += Number(r.nbCgrPediatrique) || 0;
+      plasma += Number(r.nbPlasma) || 0;
+      plaq += Number(r.nbPlaquettes) || 0;
+    });
+
+    return { total: cgrA + cgrP + plasma + plaq, cgrA, cgrP, plasma, plaq, count: yearRecords.length };
+  }, [records, selectedYear, selectedSite]);
+
+  // Agrégation Mensuelle
+  const monthlyStats = useMemo(() => {
+    const monthRecords = records.filter(r => {
       const { m, y } = parseDateRobust(String(r.dateDistribution || ""));
       return m === selectedMonth && y === selectedYear && (selectedSite === 'TOUS LES SITES' || r.centreCntsci === selectedSite);
     });
+
+    let cgrA = 0, cgrP = 0, plasma = 0, plaq = 0;
+    monthRecords.forEach(r => {
+      cgrA += Number(r.nbCgrAdulte) || 0;
+      cgrP += Number(r.nbCgrPediatrique) || 0;
+      plasma += Number(r.nbPlasma) || 0;
+      plaq += Number(r.nbPlaquettes) || 0;
+    });
+
+    return { total: cgrA + cgrP + plasma + plaq, cgrA, cgrP, plasma, plaq, count: monthRecords.length };
   }, [records, selectedMonth, selectedYear, selectedSite]);
 
-  const stats = useMemo(() => {
-    let units = 0, cgr = 0, psl = 0, structs = 0;
-    filteredRecords.forEach(r => {
-      units += (Number(r.nbCgrAdulte) || 0) + (Number(r.nbCgrPediatrique) || 0) + (Number(r.nbPlasma) || 0) + (Number(r.nbPlaquettes) || 0);
-      cgr += (Number(r.nbCgrAdulte) || 0) + (Number(r.nbCgrPediatrique) || 0);
-      psl += (Number(r.nbPlasma) || 0) + (Number(r.nbPlaquettes) || 0);
-      structs += Number(r.nbStructuresSanitaire) || 0;
+  // Agrégation Quotidienne (Jour par Jour pour le mois sélectionné)
+  const dailyBreakdown = useMemo(() => {
+    const monthRecords = records.filter(r => {
+      const { m, y } = parseDateRobust(String(r.dateDistribution || ""));
+      return m === selectedMonth && y === selectedYear && (selectedSite === 'TOUS LES SITES' || r.centreCntsci === selectedSite);
     });
-    return { units, cgr, psl, structs };
-  }, [filteredRecords]);
+
+    const days: { [key: string]: any } = {};
+    monthRecords.forEach(r => {
+      const { d } = parseDateRobust(String(r.dateDistribution || ""));
+      if (!days[d]) days[d] = { d, cgrA: 0, cgrP: 0, plasma: 0, plaq: 0, total: 0 };
+      days[d].cgrA += Number(r.nbCgrAdulte) || 0;
+      days[d].cgrP += Number(r.nbCgrPediatrique) || 0;
+      days[d].plasma += Number(r.nbPlasma) || 0;
+      days[d].plaq += Number(r.nbPlaquettes) || 0;
+      days[d].total = days[d].cgrA + days[d].cgrP + days[d].plasma + days[d].plaq;
+    });
+
+    return Object.values(days).sort((a, b) => Number(b.d) - Number(a.d));
+  }, [records, selectedMonth, selectedYear, selectedSite]);
 
   return (
-    <div className="space-y-10 animate-in fade-in duration-1000">
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        
-        {/* Advanced Filters Bento */}
-        <div className="lg:col-span-12 bg-white p-8 rounded-[3rem] shadow-xl border border-slate-100 flex flex-wrap items-center gap-8">
-          <div className="flex items-center gap-4 bg-slate-50 px-6 py-4 rounded-2xl border border-slate-100">
-            <i className="fa-solid fa-calendar-check text-red-500 text-lg"></i>
-            <div className="flex gap-4">
-              <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-transparent font-black text-xs uppercase tracking-widest outline-none cursor-pointer">
-                {months.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
-              </select>
-              <select value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className="bg-transparent font-black text-xs uppercase tracking-widest outline-none cursor-pointer">
-                {['2024', '2025', '2026'].map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
-          </div>
-          
-          <div className="flex-1 flex items-center gap-4 bg-slate-50 px-6 py-4 rounded-2xl border border-slate-100 min-w-[300px]">
-            <i className="fa-solid fa-map-location-dot text-red-500 text-lg"></i>
-            <select value={selectedSite} onChange={e => setSelectedSite(e.target.value)} className="w-full bg-transparent font-black text-xs uppercase tracking-widest outline-none cursor-pointer">
-              <option value="TOUS LES SITES">TOUS LES CENTRES CNTSCI</option>
-              {CNTSCI_CENTERS.map(c => <option key={c} value={c}>{c}</option>)}
+    <div className="space-y-12 animate-in fade-in duration-1000 pb-10">
+      
+      {/* 1. FILTRES STRATÉGIQUES */}
+      <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-slate-100 flex flex-wrap items-center gap-8">
+        <div className="flex items-center gap-4 bg-slate-50 px-6 py-4 rounded-2xl border border-slate-100">
+          <i className="fa-solid fa-calendar-check text-red-500 text-lg"></i>
+          <div className="flex gap-4">
+            <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-transparent font-black text-xs uppercase tracking-widest outline-none cursor-pointer">
+              {months.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+            </select>
+            <select value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className="bg-transparent font-black text-xs uppercase tracking-widest outline-none cursor-pointer">
+              {['2024', '2025', '2026'].map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
-          
-          <button onClick={onRefresh} className="px-10 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-red-600 transition-all flex items-center gap-3 shadow-lg active:scale-95">
-            <i className={`fa-solid fa-arrows-rotate ${isSyncing ? 'fa-spin' : ''}`}></i> Rafraîchir
-          </button>
         </div>
+        
+        <div className="flex-1 flex items-center gap-4 bg-slate-50 px-6 py-4 rounded-2xl border border-slate-100 min-w-[300px]">
+          <i className="fa-solid fa-map-location-dot text-red-500 text-lg"></i>
+          <select value={selectedSite} onChange={e => setSelectedSite(e.target.value)} className="w-full bg-transparent font-black text-xs uppercase tracking-widest outline-none cursor-pointer">
+            <option value="TOUS LES SITES">TOUS LES CENTRES CNTSCI</option>
+            {CNTSCI_CENTERS.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        
+        <button onClick={onRefresh} className="px-10 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-red-600 transition-all flex items-center gap-3 shadow-lg active:scale-95">
+          <i className={`fa-solid fa-arrows-rotate ${isSyncing ? 'fa-spin' : ''}`}></i> Rafraîchir
+        </button>
+      </div>
 
-        {/* Executive Stats Bento Grid */}
-        <StatBlock title="Volume Total" value={stats.units} sub="Unités sanguines" color="red" icon="fa-solid fa-box-open" />
-        <StatBlock title="Globules (CGR)" value={stats.cgr} sub="Adulte & Pédia" color="crimson" icon="fa-solid fa-droplet" />
-        <StatBlock title="P. Labiles (PSL)" value={stats.psl} sub="Plasma/Plaquettes" color="blue" icon="fa-solid fa-flask" />
-        <StatBlock title="Réseau Livré" value={stats.structs} sub="Hôpitaux servis" color="slate" icon="fa-solid fa-truck-medical" />
+      {/* 2. BILAN ANNUEL (CONSOLIDE) */}
+      <section className="space-y-6">
+        <div className="flex items-center gap-4 pl-4">
+          <div className="w-2 h-8 bg-red-600 rounded-full"></div>
+          <h2 className="text-xl font-black uppercase tracking-tighter">Bilan Annuel <span className="text-red-600">{selectedYear}</span></h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+          <CompactStat title="Total Annuel" value={yearlyStats.total} sub="Toutes poches" color="slate" icon="fa-solid fa-globe" />
+          <CompactStat title="CGR Adulte" value={yearlyStats.cgrA} sub="Total Année" color="red" icon="fa-solid fa-droplet" />
+          <CompactStat title="CGR Péd." value={yearlyStats.cgrP} sub="Total Année" color="crimson" icon="fa-solid fa-baby" />
+          <CompactStat title="Plasma" value={yearlyStats.plasma} sub="Total Année" color="blue" icon="fa-solid fa-vial" />
+          <CompactStat title="Plaquettes" value={yearlyStats.plaq} sub="Total Année" color="blue" icon="fa-solid fa-flask" />
+        </div>
+      </section>
 
-        {/* Master Data Table */}
-        <div className="lg:col-span-12 bg-white rounded-[3.5rem] shadow-2xl border border-slate-50 overflow-hidden">
-          <div className="px-12 py-10 bg-slate-900 flex justify-between items-center">
-            <div>
-              <h3 className="text-white font-black uppercase tracking-[0.25em] text-sm">Registre des Distributions</h3>
-              <p className="text-slate-500 text-[10px] font-bold mt-1 uppercase tracking-widest">Archive certifiée {months.find(m => m.v === selectedMonth)?.l} {selectedYear}</p>
-            </div>
-            <div className="bg-white/5 border border-white/10 px-8 py-4 rounded-2xl text-center backdrop-blur-md">
-              <p className="text-white font-black text-2xl leading-none">{filteredRecords.length}</p>
-              <p className="text-slate-500 text-[8px] font-black uppercase tracking-widest mt-1">Lignes</p>
-            </div>
+      {/* 3. BILAN MENSUEL (SELECTIONNE) */}
+      <section className="space-y-6">
+        <div className="flex items-center gap-4 pl-4">
+          <div className="w-2 h-8 bg-blue-600 rounded-full"></div>
+          <h2 className="text-xl font-black uppercase tracking-tighter">Bilan Mensuel <span className="text-blue-600">{months.find(m => m.v === selectedMonth)?.l}</span></h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <StatBlockPremium title="CGR Adulte" value={monthlyStats.cgrA} color="red" icon="fa-solid fa-droplet" />
+          <StatBlockPremium title="CGR Pédia" value={monthlyStats.cgrP} color="crimson" icon="fa-solid fa-baby" />
+          <StatBlockPremium title="Plasma" value={monthlyStats.plasma} color="blue" icon="fa-solid fa-vial" />
+          <StatBlockPremium title="Plaquettes" value={monthlyStats.plaq} color="indigo" icon="fa-solid fa-vial-circle-check" />
+        </div>
+      </section>
+
+      {/* 4. DETAIL QUOTIDIEN & REGISTRE */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+        
+        {/* Total par Jour */}
+        <div className="lg:col-span-4 bg-white rounded-[3rem] shadow-xl border border-slate-100 overflow-hidden">
+          <div className="p-8 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+            <h3 className="font-black uppercase tracking-widest text-xs text-slate-800">Total par Jour</h3>
+            <span className="text-[10px] font-bold text-slate-400">Ce mois</span>
           </div>
-          
-          <div className="overflow-x-auto">
-            {filteredRecords.length > 0 ? (
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-slate-50/50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b border-slate-100">
-                    <th className="px-12 py-8 text-left">Chronologie</th>
-                    <th className="px-8 py-8 text-left">Destination</th>
-                    <th className="px-8 py-8 text-center">CGR Total</th>
-                    <th className="px-8 py-8 text-center">PSL Total</th>
-                    <th className="px-12 py-8 text-right">Confirmation</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {filteredRecords.map((r, i) => (
-                    <tr key={i} className="group hover:bg-slate-50 transition-all duration-300">
-                      <td className="px-12 py-8">
-                        <p className="font-black text-slate-900 text-lg leading-none mb-1">
-                          {new Date(r.dateDistribution).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                        </p>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">{r.nomAgent || "Agent CNTSCI"}</p>
-                      </td>
-                      <td className="px-8 py-8">
-                        <span className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 group-hover:bg-red-50 text-[10px] font-black text-slate-700 group-hover:text-red-700 rounded-xl transition-all uppercase tracking-tighter">
-                          <i className="fa-solid fa-hospital-user opacity-30"></i>
-                          {r.centreCntsci}
-                        </span>
-                      </td>
-                      <td className="px-8 py-8 text-center">
-                        <span className="font-black text-3xl text-red-600 tracking-tighter">
-                          {Number(r.nbCgrAdulte) + Number(r.nbCgrPediatrique)}
-                        </span>
-                      </td>
-                      <td className="px-8 py-8 text-center">
-                        <span className="font-black text-3xl text-blue-600 tracking-tighter">
-                          {Number(r.nbPlasma) + Number(r.nbPlaquettes)}
-                        </span>
-                      </td>
-                      <td className="px-12 py-8 text-right">
-                        <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-50 text-green-600 text-[9px] font-black uppercase tracking-widest rounded-full border border-green-100">
-                          <i className="fa-solid fa-circle-check"></i> Actif Cloud
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <div className="max-h-[600px] overflow-y-auto custom-scrollbar">
+            {dailyBreakdown.length > 0 ? (
+              <div className="divide-y divide-slate-50">
+                {dailyBreakdown.map((day, idx) => (
+                  <div key={idx} className="p-6 hover:bg-slate-50 transition-colors flex justify-between items-center group">
+                    <div>
+                      <p className="text-xs font-black text-slate-400 uppercase">Jour</p>
+                      <p className="text-2xl font-black text-slate-900 leading-none">{day.d}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xl font-black text-red-600 group-hover:scale-110 transition-transform">{day.total} <span className="text-[10px] text-slate-400">poches</span></p>
+                      <div className="flex gap-2 justify-end mt-1">
+                        <span className="text-[8px] font-bold text-red-400">CGR:{day.cgrA + day.cgrP}</span>
+                        <span className="text-[8px] font-bold text-blue-400">PSL:{day.plasma + day.plaq}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : (
-              <div className="py-32 text-center bg-slate-50/30">
-                <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mx-auto mb-8 shadow-xl">
-                  <i className="fa-solid fa-database text-slate-200 text-4xl"></i>
-                </div>
-                <h4 className="text-slate-400 font-black uppercase tracking-[0.2em] text-xs">Aucune archive disponible</h4>
-                <p className="text-slate-300 text-[10px] font-bold mt-2 italic uppercase">Sélectionnez une autre période ou centre</p>
+              <div className="p-20 text-center opacity-20">
+                <i className="fa-solid fa-calendar-minus text-6xl"></i>
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Registre Complet */}
+        <div className="lg:col-span-8 bg-white rounded-[3.5rem] shadow-2xl border border-slate-50 overflow-hidden">
+          <div className="px-10 py-8 bg-slate-900 flex justify-between items-center">
+            <h3 className="text-white font-black uppercase tracking-[0.25em] text-sm">Registre Détaillé</h3>
+            <span className="bg-white/10 text-white px-4 py-1 rounded-full text-[10px] font-black">{monthlyStats.count} entrées</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                  <th className="px-8 py-6 text-left">Date</th>
+                  <th className="px-6 py-6 text-center">CGR A.</th>
+                  <th className="px-6 py-6 text-center">CGR P.</th>
+                  <th className="px-6 py-6 text-center">Plasma</th>
+                  <th className="px-6 py-6 text-center">Plaq.</th>
+                  <th className="px-8 py-6 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {records.filter(r => {
+                  const { m, y } = parseDateRobust(String(r.dateDistribution || ""));
+                  return m === selectedMonth && y === selectedYear && (selectedSite === 'TOUS LES SITES' || r.centreCntsci === selectedSite);
+                }).map((r, i) => (
+                  <tr key={i} className="group hover:bg-slate-50 transition-all duration-300">
+                    <td className="px-8 py-6">
+                      <p className="font-black text-slate-900 text-sm">
+                        {parseDateRobust(String(r.dateDistribution)).d}/{selectedMonth}/{selectedYear}
+                      </p>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase truncate max-w-[120px]">{r.nomAgent}</p>
+                    </td>
+                    <td className="px-6 py-6 text-center font-black text-slate-600">{r.nbCgrAdulte}</td>
+                    <td className="px-6 py-6 text-center font-black text-slate-600">{r.nbCgrPediatrique}</td>
+                    <td className="px-6 py-6 text-center font-black text-slate-600">{r.nbPlasma}</td>
+                    <td className="px-6 py-6 text-center font-black text-slate-600">{r.nbPlaquettes}</td>
+                    <td className="px-8 py-6 text-right">
+                      <span className="font-black text-lg text-red-600">
+                        {Number(r.nbCgrAdulte) + Number(r.nbCgrPediatrique) + Number(r.nbPlasma) + Number(r.nbPlaquettes)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -164,25 +236,44 @@ const RecapView: React.FC<RecapViewProps> = ({ records, lastSync, onRefresh, isS
   );
 };
 
-const StatBlock = ({ title, value, sub, color, icon }: any) => {
+// COMPOSANTS DE STATS OPTIMISÉS
+const CompactStat = ({ title, value, sub, color, icon }: any) => {
   const themes: any = {
-    red: "bg-red-50 text-red-600 border-red-100 shadow-red-200/20",
-    crimson: "bg-rose-50 text-rose-600 border-rose-100 shadow-rose-200/20",
-    blue: "bg-blue-50 text-blue-600 border-blue-100 shadow-blue-200/20",
-    slate: "bg-slate-100 text-slate-600 border-slate-200 shadow-slate-200/10",
+    red: "text-red-600 bg-red-50 border-red-100",
+    crimson: "text-rose-600 bg-rose-50 border-rose-100",
+    blue: "text-blue-600 bg-blue-50 border-blue-100",
+    slate: "text-slate-600 bg-slate-50 border-slate-100",
   };
   return (
-    <div className="lg:col-span-3 p-10 rounded-[3rem] bg-white border border-slate-100 shadow-xl hover:-translate-y-2 transition-all duration-500 group relative overflow-hidden">
-      <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-150 transition-transform duration-1000">
-         <i className={`${icon} text-9xl`}></i>
-      </div>
-      <div className={`w-14 h-14 rounded-2xl mb-8 flex items-center justify-center text-xl shadow-lg transition-transform group-hover:rotate-12 ${themes[color]}`}>
+    <div className={`p-6 rounded-[2rem] bg-white border border-slate-100 shadow-md hover:shadow-xl transition-all duration-300`}>
+      <div className={`w-10 h-10 rounded-xl mb-4 flex items-center justify-center text-sm ${themes[color]}`}>
         <i className={icon}></i>
       </div>
-      <p className="text-6xl font-black text-slate-900 tracking-tighter mb-2 leading-none">{value.toLocaleString()}</p>
-      <div className="flex flex-col">
-        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-800">{title}</span>
-        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{sub}</span>
+      <p className="text-3xl font-black text-slate-900 tracking-tighter leading-none mb-1">{value.toLocaleString()}</p>
+      <p className="text-[9px] font-black uppercase tracking-widest text-slate-800">{title}</p>
+      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{sub}</p>
+    </div>
+  );
+};
+
+const StatBlockPremium = ({ title, value, color, icon }: any) => {
+  const colors: any = {
+    red: "from-red-600 to-red-800 shadow-red-500/20",
+    crimson: "from-rose-500 to-rose-700 shadow-rose-500/20",
+    blue: "from-blue-500 to-blue-700 shadow-blue-500/20",
+    indigo: "from-indigo-500 to-indigo-700 shadow-indigo-500/20",
+  };
+  return (
+    <div className={`p-8 rounded-[2.5rem] bg-gradient-to-br ${colors[color]} text-white shadow-2xl hover:scale-105 transition-all duration-500 group relative overflow-hidden`}>
+      <div className="absolute -right-4 -bottom-4 opacity-10 group-hover:scale-150 transition-transform duration-1000">
+        <i className={`${icon} text-9xl`}></i>
+      </div>
+      <div className="relative z-10">
+        <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center mb-6 backdrop-blur-md">
+           <i className={icon}></i>
+        </div>
+        <p className="text-5xl font-black tracking-tighter mb-1">{value.toLocaleString()}</p>
+        <p className="text-[11px] font-black uppercase tracking-[0.2em] opacity-80">{title}</p>
       </div>
     </div>
   );

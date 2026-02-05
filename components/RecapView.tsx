@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState } from 'react';
-import { DistributionData, CNTSCI_CENTERS } from '../types';
+import { DistributionData, CNTSCI_CENTERS, BLOOD_GROUPS, PRODUCT_TYPES } from '../types.ts';
 
 interface RecapViewProps {
   records: DistributionData[];
@@ -9,7 +9,8 @@ interface RecapViewProps {
   isSyncing?: boolean;
 }
 
-const RecapView: React.FC<RecapViewProps> = ({ records, lastSync, onRefresh, isSyncing }) => {
+const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing }) => {
+  const [selectedDay, setSelectedDay] = useState<string>('TOUS');
   const [selectedMonth, setSelectedMonth] = useState((new Date().getMonth() + 1).toString().padStart(2, '0'));
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [selectedSite, setSelectedSite] = useState('TOUS LES SITES');
@@ -20,275 +21,294 @@ const RecapView: React.FC<RecapViewProps> = ({ records, lastSync, onRefresh, isS
     { v: '09', l: 'SEPTEMBRE' }, { v: '10', l: 'OCTOBRE' }, { v: '11', l: 'NOVEMBRE' }, { v: '12', l: 'DÉCEMBRE' }
   ];
 
-  const parseDateRobust = (dateStr: string) => {
-    if (!dateStr) return { d: '', m: '', y: '' };
-    const parts = dateStr.includes('-') ? dateStr.split('-') : dateStr.split('/');
-    if (parts.length === 3) {
-      if (parts[0].length === 4) return { d: parts[2].padStart(2, '0'), m: parts[1].padStart(2, '0'), y: parts[0] };
-      return { d: parts[0].padStart(2, '0'), m: parts[1].padStart(2, '0'), y: parts[2] };
-    }
-    const d = new Date(dateStr);
-    if (!isNaN(d.getTime())) {
-      return { d: d.getDate().toString().padStart(2, '0'), m: (d.getMonth() + 1).toString().padStart(2, '0'), y: d.getFullYear().toString() };
+  const days = Array.from({ length: 31 }, (_, i) => (i + 1).toString().padStart(2, '0'));
+
+  // Logic pour extraire jour/mois/année d'une date ISO ou FR
+  const parseDate = (d: any) => {
+    const s = String(d);
+    if (s.includes('-')) {
+      const p = s.split('T')[0].split('-');
+      return { d: p[2], m: p[1], y: p[0] };
+    } else if (s.includes('/')) {
+      const p = s.split('/');
+      return { d: p[0], m: p[1], y: p[2]?.substring(0, 4) };
     }
     return { d: '', m: '', y: '' };
   };
 
-  // Agrégation Annuelle
-  const yearlyStats = useMemo(() => {
-    const yearRecords = records.filter(r => {
-      const { y } = parseDateRobust(String(r.dateDistribution || ""));
-      return y === selectedYear && (selectedSite === 'TOUS LES SITES' || r.centreCntsci === selectedSite);
+  // Filtrage des données
+  const filteredAnnual = useMemo(() => records.filter(r => parseDate(r.dateDistribution).y === selectedYear), [records, selectedYear]);
+  const filteredMonthly = useMemo(() => filteredAnnual.filter(r => parseDate(r.dateDistribution).m === selectedMonth && (selectedSite === 'TOUS LES SITES' || r.centreCntsci === selectedSite)), [filteredAnnual, selectedMonth, selectedSite]);
+  const filteredDaily = useMemo(() => {
+    if (selectedDay === 'TOUS') return filteredMonthly;
+    return filteredMonthly.filter(r => parseDate(r.dateDistribution).d === selectedDay);
+  }, [filteredMonthly, selectedDay]);
+
+  // Calcul des stats
+  const getStats = (data: DistributionData[]) => {
+    const s = { total: 0, cgrAdulte: 0, cgrPedia: 0, plasma: 0, plaquettes: 0, structures: new Set() };
+    data.forEach(r => {
+      const q = Number(r.nbPoches) || 0;
+      s.total += q;
+      const type = String(r.typeProduit).toUpperCase();
+      if (type.includes('ADULTE')) s.cgrAdulte += q;
+      else if (type.includes('PEDIATRIQUE') || type.includes('NOURRISSON')) s.cgrPedia += q;
+      else if (type.includes('PLASMA')) s.plasma += q;
+      else if (type.includes('PLAQUETTES')) s.plaquettes += q;
+      if (r.nomStructuresSanitaire) s.structures.add(r.nomStructuresSanitaire);
     });
+    return s;
+  };
 
-    let cgrA = 0, cgrP = 0, plasma = 0, plaq = 0, structs = 0;
-    yearRecords.forEach(r => {
-      cgrA += Number(r.nbCgrAdulte) || 0;
-      cgrP += Number(r.nbCgrPediatrique) || 0;
-      plasma += Number(r.nbPlasma) || 0;
-      plaq += Number(r.nbPlaquettes) || 0;
-      structs += Number(r.nbStructuresSanitaire) || 0;
+  const annualStats = getStats(filteredAnnual);
+  const monthlyStats = getStats(filteredMonthly);
+  const dailyStats = getStats(filteredDaily);
+
+  // Groupement des données pour le Registre Matriciel
+  const matrixData = useMemo(() => {
+    const tree: any = {};
+    filteredDaily.forEach(r => {
+      const site = r.centreCntsci;
+      const struct = r.nomStructuresSanitaire;
+      const prod = r.typeProduit;
+      const grp = r.saGroupe;
+      const q = Number(r.nbPoches) || 0;
+
+      if (!tree[site]) tree[site] = { structs: {}, total: 0, grpTotals: {} };
+      if (!tree[site].structs[struct]) tree[site].structs[struct] = { prods: {} };
+      if (!tree[site].structs[struct].prods[prod]) {
+        tree[site].structs[struct].prods[prod] = { grps: {}, total: 0 };
+      }
+
+      tree[site].structs[struct].prods[prod].grps[grp] = (tree[site].structs[struct].prods[prod].grps[grp] || 0) + q;
+      tree[site].structs[struct].prods[prod].total += q;
+      tree[site].total += q;
+      tree[site].grpTotals[grp] = (tree[site].grpTotals[grp] || 0) + q;
     });
-
-    return { total: cgrA + cgrP + plasma + plaq, cgrA, cgrP, plasma, plaq, structs, count: yearRecords.length };
-  }, [records, selectedYear, selectedSite]);
-
-  // Agrégation Mensuelle
-  const monthlyStats = useMemo(() => {
-    const monthRecords = records.filter(r => {
-      const { m, y } = parseDateRobust(String(r.dateDistribution || ""));
-      return m === selectedMonth && y === selectedYear && (selectedSite === 'TOUS LES SITES' || r.centreCntsci === selectedSite);
-    });
-
-    let cgrA = 0, cgrP = 0, plasma = 0, plaq = 0, structs = 0;
-    monthRecords.forEach(r => {
-      cgrA += Number(r.nbCgrAdulte) || 0;
-      cgrP += Number(r.nbCgrPediatrique) || 0;
-      plasma += Number(r.nbPlasma) || 0;
-      plaq += Number(r.nbPlaquettes) || 0;
-      structs += Number(r.nbStructuresSanitaire) || 0;
-    });
-
-    return { total: cgrA + cgrP + plasma + plaq, cgrA, cgrP, plasma, plaq, structs, count: monthRecords.length };
-  }, [records, selectedMonth, selectedYear, selectedSite]);
-
-  // Agrégation Quotidienne
-  const dailyBreakdown = useMemo(() => {
-    const monthRecords = records.filter(r => {
-      const { m, y } = parseDateRobust(String(r.dateDistribution || ""));
-      return m === selectedMonth && y === selectedYear && (selectedSite === 'TOUS LES SITES' || r.centreCntsci === selectedSite);
-    });
-
-    const days: { [key: string]: any } = {};
-    monthRecords.forEach(r => {
-      const { d } = parseDateRobust(String(r.dateDistribution || ""));
-      if (!days[d]) days[d] = { d, cgrA: 0, cgrP: 0, plasma: 0, plaq: 0, structs: 0, total: 0 };
-      days[d].cgrA += Number(r.nbCgrAdulte) || 0;
-      days[d].cgrP += Number(r.nbCgrPediatrique) || 0;
-      days[d].plasma += Number(r.nbPlasma) || 0;
-      days[d].plaq += Number(r.nbPlaquettes) || 0;
-      days[d].structs += Number(r.nbStructuresSanitaire) || 0;
-      days[d].total = days[d].cgrA + days[d].cgrP + days[d].plasma + days[d].plaq;
-    });
-
-    return Object.values(days).sort((a, b) => Number(b.d) - Number(a.d));
-  }, [records, selectedMonth, selectedYear, selectedSite]);
+    return tree;
+  }, [filteredDaily]);
 
   return (
-    <div className="space-y-12 animate-in fade-in duration-1000 pb-10">
-      
-      {/* FILTRES */}
-      <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-slate-100 flex flex-wrap items-center gap-8">
-        <div className="flex items-center gap-4 bg-slate-50 px-6 py-4 rounded-2xl border border-slate-100">
-          <i className="fa-solid fa-calendar-check text-red-500 text-lg"></i>
-          <div className="flex gap-4">
-            <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-transparent font-black text-xs uppercase tracking-widest outline-none cursor-pointer">
-              {months.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
-            </select>
-            <select value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className="bg-transparent font-black text-xs uppercase tracking-widest outline-none cursor-pointer">
-              {['2024', '2025', '2026'].map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
-          </div>
+    <div className="space-y-12 animate-in fade-in duration-700 pb-20">
+      {/* FILTRES HAUT DE PAGE */}
+      <div className="bg-white p-6 rounded-[2.5rem] shadow-2xl flex flex-wrap items-center gap-6 border border-slate-100 sticky top-28 z-40">
+        <div className="flex bg-slate-50 p-1.5 rounded-2xl border border-slate-200">
+           <div className="flex items-center gap-2 px-4 py-2 border-r border-slate-200">
+             <i className="fa-solid fa-calendar-day text-blue-600 text-sm"></i>
+             <select value={selectedDay} onChange={e => setSelectedDay(e.target.value)} className="bg-transparent font-black text-xs uppercase outline-none">
+                <option value="TOUS">JOUR</option>
+                {days.map(d => <option key={d} value={d}>{d}</option>)}
+             </select>
+           </div>
+           <div className="flex items-center gap-2 px-4 py-2 border-r border-slate-200">
+             <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-transparent font-black text-xs uppercase outline-none">
+                {months.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+             </select>
+           </div>
+           <select value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className="bg-transparent px-4 py-2 font-black text-xs uppercase outline-none">
+              <option value="2024">2024</option>
+              <option value="2025">2025</option>
+              <option value="2026">2026</option>
+           </select>
         </div>
-        
-        <div className="flex-1 flex items-center gap-4 bg-slate-50 px-6 py-4 rounded-2xl border border-slate-100 min-w-[300px]">
-          <i className="fa-solid fa-map-location-dot text-red-500 text-lg"></i>
-          <select value={selectedSite} onChange={e => setSelectedSite(e.target.value)} className="w-full bg-transparent font-black text-xs uppercase tracking-widest outline-none cursor-pointer">
+
+        <div className="flex-1 flex items-center gap-3 bg-slate-50 px-5 py-3 rounded-2xl border border-slate-200">
+          <i className="fa-solid fa-map-pin text-red-500"></i>
+          <select value={selectedSite} onChange={e => setSelectedSite(e.target.value)} className="w-full bg-transparent font-black text-xs uppercase outline-none">
             <option value="TOUS LES SITES">TOUS LES CENTRES CNTSCI</option>
             {CNTSCI_CENTERS.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
-        
-        <button onClick={onRefresh} className="px-10 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-red-600 transition-all flex items-center gap-3 shadow-lg active:scale-95">
-          <i className={`fa-solid fa-arrows-rotate ${isSyncing ? 'fa-spin' : ''}`}></i> Rafraîchir
+
+        <button onClick={onRefresh} disabled={isSyncing} className="bg-slate-900 text-white px-8 py-3.5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-red-600 transition-all flex items-center gap-3">
+          <i className={`fa-solid fa-rotate ${isSyncing ? 'fa-spin' : ''}`}></i>
+          {isSyncing ? 'Chargement...' : 'Rafraîchir'}
         </button>
       </div>
 
-      {/* BILAN ANNUEL */}
-      <section className="space-y-6">
-        <div className="flex items-center gap-4 pl-4">
-          <div className="w-2 h-8 bg-red-600 rounded-full"></div>
-          <h2 className="text-xl font-black uppercase tracking-tighter">Bilan Annuel <span className="text-red-600">{selectedYear}</span></h2>
+      {/* SECTION BILAN ANNUEL */}
+      <section>
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-1.5 h-6 bg-slate-400 rounded-full"></div>
+          <h2 className="text-lg font-black uppercase tracking-tighter text-slate-800 opacity-60">Perspective Annuelle <span className="text-slate-500">{selectedYear}</span></h2>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6">
-          <CompactStat title="Total Poches" value={yearlyStats.total} sub="Consolidé Année" color="slate" icon="fa-solid fa-globe" />
-          <CompactStat title="CGR Adulte" value={yearlyStats.cgrA} sub="Consolidé Année" color="red" icon="fa-solid fa-droplet" />
-          <CompactStat title="CGR Péd." value={yearlyStats.cgrP} sub="Consolidé Année" color="crimson" icon="fa-solid fa-baby" />
-          <CompactStat title="Plasma" value={yearlyStats.plasma} sub="Consolidé Année" color="blue" icon="fa-solid fa-vial" />
-          <CompactStat title="Plaquettes" value={yearlyStats.plaq} sub="Consolidé Année" color="blue" icon="fa-solid fa-flask" />
-          <CompactStat title="Structures" value={yearlyStats.structs} sub="Livrées Année" color="slate" icon="fa-solid fa-hospital" />
-        </div>
-      </section>
-
-      {/* BILAN MENSUEL */}
-      <section className="space-y-6">
-        <div className="flex items-center gap-4 pl-4">
-          <div className="w-2 h-8 bg-blue-600 rounded-full"></div>
-          <h2 className="text-xl font-black uppercase tracking-tighter">Bilan Mensuel <span className="text-blue-600">{months.find(m => m.v === selectedMonth)?.l}</span></h2>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-          <StatBlockPremium title="CGR Adulte" value={monthlyStats.cgrA} color="red" icon="fa-solid fa-droplet" />
-          <StatBlockPremium title="CGR Pédia" value={monthlyStats.cgrP} color="crimson" icon="fa-solid fa-baby" />
-          <StatBlockPremium title="Plasma" value={monthlyStats.plasma} color="blue" icon="fa-solid fa-vial" />
-          <StatBlockPremium title="Plaquettes" value={monthlyStats.plaq} color="indigo" icon="fa-solid fa-vial-circle-check" />
-          <StatBlockPremium title="Structures" value={monthlyStats.structs} color="slate" icon="fa-solid fa-truck-medical" />
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <AnnualCard icon="fa-solid fa-globe" title="Total" value={annualStats.total} sub="Cumul Année" />
+          <AnnualCard icon="fa-solid fa-droplet text-red-500" title="CGR Adulte" value={annualStats.cgrAdulte} />
+          <AnnualCard icon="fa-solid fa-child-reaching text-rose-500" title="CGR Péd." value={annualStats.cgrPedia} />
+          <AnnualCard icon="fa-solid fa-vial text-blue-500" title="Plasma" value={annualStats.plasma} />
+          <AnnualCard icon="fa-solid fa-flask-vial text-indigo-500" title="Plaquettes" value={annualStats.plaquettes} />
+          <AnnualCard icon="fa-solid fa-hospital-user text-slate-500" title="Structures" value={annualStats.structures.size} />
         </div>
       </section>
 
-      {/* DETAIL QUOTIDIEN & REGISTRE */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+      {/* SECTION BILAN JOURNALIER / MENSUEL (DYNAMIQUE) */}
+      <section>
+        <div className="flex items-center gap-3 mb-6">
+          <div className={`w-1.5 h-6 rounded-full ${selectedDay !== 'TOUS' ? 'bg-red-600' : 'bg-blue-600'}`}></div>
+          <h2 className="text-lg font-black uppercase tracking-tighter text-slate-800">
+            {selectedDay !== 'TOUS' ? `Bilan Journalier : ${selectedDay} ` : 'Bilan Mensuel : '} 
+            <span className={selectedDay !== 'TOUS' ? 'text-red-600' : 'text-blue-600'}>
+              {months.find(m=>m.v===selectedMonth)?.l}
+            </span>
+          </h2>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+          <MonthlyCard 
+            gradient={selectedDay !== 'TOUS' ? "from-red-600 to-red-800" : "from-blue-600 to-blue-800"} 
+            icon="fa-solid fa-droplet" 
+            title="CGR Adulte" 
+            value={selectedDay !== 'TOUS' ? dailyStats.cgrAdulte : monthlyStats.cgrAdulte} 
+          />
+          <MonthlyCard 
+            gradient={selectedDay !== 'TOUS' ? "from-red-500 to-red-700" : "from-blue-500 to-blue-700"} 
+            icon="fa-solid fa-child" 
+            title="CGR Pédia" 
+            value={selectedDay !== 'TOUS' ? dailyStats.cgrPedia : monthlyStats.cgrPedia} 
+          />
+          <MonthlyCard 
+            gradient={selectedDay !== 'TOUS' ? "from-red-400 to-red-600" : "from-blue-400 to-blue-600"} 
+            icon="fa-solid fa-vial" 
+            title="Plasma" 
+            value={selectedDay !== 'TOUS' ? dailyStats.plasma : monthlyStats.plasma} 
+          />
+          <MonthlyCard 
+            gradient={selectedDay !== 'TOUS' ? "from-slate-700 to-slate-900" : "from-indigo-600 to-indigo-800"} 
+            icon="fa-solid fa-flask-vial" 
+            title="Plaquettes" 
+            value={selectedDay !== 'TOUS' ? dailyStats.plaquettes : monthlyStats.plaquettes} 
+          />
+          <MonthlyCard 
+            gradient="from-slate-800 to-black" 
+            icon="fa-solid fa-truck-medical" 
+            title="Structures" 
+            value={selectedDay !== 'TOUS' ? dailyStats.structures.size : monthlyStats.structures.size} 
+          />
+        </div>
+      </section>
+
+      {/* REGISTRE DE DISTRIBUTION */}
+      <section className="bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden">
+        <div className="px-10 py-8 bg-white border-b border-slate-50 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <i className="fa-solid fa-table-cells text-red-600 text-xl"></i>
+            <h2 className="text-sm font-black uppercase tracking-[0.2em] text-slate-800">Registre de Distribution Détaillé</h2>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] font-black uppercase text-slate-400">Affichage : <span className="text-red-600">{selectedDay !== 'TOUS' ? `JOUR ${selectedDay}` : 'TOUT LE MOIS'}</span></p>
+          </div>
+        </div>
         
-        {/* Total par Jour */}
-        <div className="lg:col-span-4 bg-white rounded-[3rem] shadow-xl border border-slate-100 overflow-hidden">
-          <div className="p-8 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-            <h3 className="font-black uppercase tracking-widest text-xs text-slate-800">Bilan Journalier</h3>
-            <span className="text-[10px] font-bold text-slate-400">Ce mois</span>
-          </div>
-          <div className="max-h-[600px] overflow-y-auto custom-scrollbar">
-            {dailyBreakdown.length > 0 ? (
-              <div className="divide-y divide-slate-50">
-                {dailyBreakdown.map((day, idx) => (
-                  <div key={idx} className="p-6 hover:bg-slate-50 transition-colors flex justify-between items-center group">
-                    <div>
-                      <p className="text-xs font-black text-slate-400 uppercase leading-none mb-1">Jour</p>
-                      <p className="text-2xl font-black text-slate-900 leading-none">{day.d}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xl font-black text-red-600 group-hover:scale-110 transition-transform leading-none">{day.total} <span className="text-[10px] text-slate-400">P.S.</span></p>
-                      <p className="text-[10px] font-black text-slate-400 mt-1 uppercase">{day.structs} Structures</p>
-                      <div className="flex gap-2 justify-end mt-2">
-                        <span className="text-[8px] font-bold text-red-400 bg-red-50 px-1 rounded">CGR:{day.cgrA + day.cgrP}</span>
-                        <span className="text-[8px] font-bold text-blue-400 bg-blue-50 px-1 rounded">PSL:{day.plasma + day.plaq}</span>
-                      </div>
-                    </div>
-                  </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50/50 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                <th className="px-6 py-4 border-r border-slate-100">Site</th>
+                <th className="px-6 py-4 border-r border-slate-100">Structure (FS_NOM)</th>
+                <th className="px-6 py-4 border-r border-slate-100">Type de Produit</th>
+                {BLOOD_GROUPS.map(g => (
+                  <th key={g} className="px-3 py-4 text-center border-r border-slate-100">{g}</th>
                 ))}
-              </div>
-            ) : (
-              <div className="p-20 text-center opacity-20">
-                <i className="fa-solid fa-calendar-minus text-6xl"></i>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Registre Complet */}
-        <div className="lg:col-span-8 bg-white rounded-[3.5rem] shadow-2xl border border-slate-50 overflow-hidden">
-          <div className="px-10 py-8 bg-slate-900 flex justify-between items-center">
-            <h3 className="text-white font-black uppercase tracking-[0.25em] text-sm">Mouvements Détaillés</h3>
-            <span className="bg-white/10 text-white px-4 py-1 rounded-full text-[10px] font-black">{monthlyStats.count} entrées</span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
-                  <th className="px-6 py-6 text-left">Date</th>
-                  <th className="px-4 py-6 text-center">CGR A/P</th>
-                  <th className="px-4 py-6 text-center">PSL</th>
-                  <th className="px-4 py-6 text-center">Struct.</th>
-                  <th className="px-8 py-6 text-right">Total Poches</th>
+                <th className="px-4 py-4 text-center bg-purple-50 text-purple-600">Rendu</th>
+                <th className="px-8 py-4 text-right bg-slate-50 font-black">Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {Object.keys(matrixData).length === 0 ? (
+                <tr>
+                  <td colSpan={14} className="py-20 text-center">
+                    <i className="fa-solid fa-folder-open text-4xl text-slate-100 mb-4"></i>
+                    <p className="text-[10px] font-black uppercase text-slate-300">Aucune distribution enregistrée pour cette sélection</p>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {records.filter(r => {
-                  const { m, y } = parseDateRobust(String(r.dateDistribution || ""));
-                  return m === selectedMonth && y === selectedYear && (selectedSite === 'TOUS LES SITES' || r.centreCntsci === selectedSite);
-                }).map((r, i) => (
-                  <tr key={i} className="group hover:bg-slate-50 transition-all duration-300">
-                    <td className="px-6 py-6">
-                      <p className="font-black text-slate-900 text-sm">
-                        {parseDateRobust(String(r.dateDistribution)).d}/{selectedMonth}
-                      </p>
-                      <p className="text-[9px] font-bold text-slate-400 uppercase truncate max-w-[100px]">{r.nomAgent}</p>
-                    </td>
-                    <td className="px-4 py-6 text-center">
-                       <span className="font-black text-slate-700">{Number(r.nbCgrAdulte) + Number(r.nbCgrPediatrique)}</span>
-                    </td>
-                    <td className="px-4 py-6 text-center">
-                       <span className="font-black text-slate-700">{Number(r.nbPlasma) + Number(r.nbPlaquettes)}</span>
-                    </td>
-                    <td className="px-4 py-6 text-center">
-                       <span className="inline-block px-2 py-1 bg-slate-100 rounded-lg font-black text-slate-600 text-xs">
-                         {r.nbStructuresSanitaire}
-                       </span>
-                    </td>
-                    <td className="px-8 py-6 text-right">
-                      <span className="font-black text-xl text-red-600">
-                        {Number(r.nbCgrAdulte) + Number(r.nbCgrPediatrique) + Number(r.nbPlasma) + Number(r.nbPlaquettes)}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ) : (
+                Object.entries(matrixData).map(([siteName, siteData]: any) => (
+                  <React.Fragment key={siteName}>
+                    {Object.entries(siteData.structs).map(([structName, structData]: any, sIdx) => (
+                      <React.Fragment key={structName}>
+                        {Object.entries(structData.prods).map(([prodName, prodData]: any, pIdx) => (
+                          <tr key={prodName} className="hover:bg-slate-50/50 transition-colors group">
+                            <td className="px-6 py-4 border-r border-slate-50 align-top">
+                              {sIdx === 0 && pIdx === 0 ? <span className="text-[9px] font-black text-red-600 uppercase whitespace-nowrap">{siteName}</span> : ''}
+                            </td>
+                            <td className="px-6 py-4 border-r border-slate-50 align-top">
+                              {pIdx === 0 ? <p className="text-[10px] font-bold text-slate-700 uppercase leading-tight">{structName}</p> : ''}
+                            </td>
+                            <td className="px-6 py-4 border-r border-slate-50">
+                              <span className="inline-block px-3 py-1 rounded-md bg-slate-100 text-[8px] font-black text-slate-600 uppercase">
+                                {prodName}
+                              </span>
+                            </td>
+                            {BLOOD_GROUPS.map(g => {
+                              const val = prodData.grps[g] || 0;
+                              return (
+                                <td key={g} className={`px-3 py-4 text-center border-r border-slate-50 font-black text-xs ${val > 0 ? 'text-slate-900' : 'text-slate-200'}`}>
+                                  {val}
+                                </td>
+                              );
+                            })}
+                            <td className="px-4 py-4 text-center text-[10px] font-black text-purple-600 bg-purple-50/30">0</td>
+                            <td className="px-8 py-4 text-right bg-slate-50/30 font-black text-red-600">
+                              {prodData.total}
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    ))}
+                    <tr className="bg-slate-50/80 font-black">
+                      <td colSpan={2} className="px-6 py-6 text-right uppercase text-[9px] tracking-widest text-slate-400">
+                        SOUS-TOTAL {siteName}
+                      </td>
+                      <td className="px-6 py-6">
+                        <span className="px-3 py-1 bg-slate-200 text-slate-700 rounded-md text-[8px] uppercase">TOTAL SITE</span>
+                      </td>
+                      {BLOOD_GROUPS.map(g => (
+                        <td key={g} className="px-3 py-6 text-center text-xs">
+                          {siteData.grpTotals[g] || 0}
+                        </td>
+                      ))}
+                      <td className="px-4 py-6 text-center text-purple-600">0</td>
+                      <td className="px-8 py-6 text-right bg-red-600 text-white text-xl tracking-tighter rounded-l-xl">
+                        {siteData.total}
+                      </td>
+                    </tr>
+                  </React.Fragment>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
-      </div>
+      </section>
     </div>
   );
 };
 
-const CompactStat = ({ title, value, sub, color, icon }: any) => {
-  const themes: any = {
-    red: "text-red-600 bg-red-50 border-red-100",
-    crimson: "text-rose-600 bg-rose-50 border-rose-100",
-    blue: "text-blue-600 bg-blue-50 border-blue-100",
-    slate: "text-slate-600 bg-slate-50 border-slate-100",
-  };
-  return (
-    <div className={`p-6 rounded-[2rem] bg-white border border-slate-100 shadow-md hover:shadow-xl transition-all duration-300`}>
-      <div className={`w-10 h-10 rounded-xl mb-4 flex items-center justify-center text-sm ${themes[color]}`}>
+const AnnualCard = ({ icon, title, value, sub }: any) => (
+  <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-xl hover:shadow-2xl transition-all group">
+    <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 mb-4 group-hover:scale-110 transition-transform">
+      <i className={icon}></i>
+    </div>
+    <p className="text-3xl font-black text-slate-900 tracking-tighter mb-1">{value}</p>
+    <div className="space-y-0.5">
+      <p className="text-[9px] font-black uppercase text-slate-800 tracking-widest">{title}</p>
+      {sub && <p className="text-[8px] font-bold text-slate-400 uppercase">{sub}</p>}
+    </div>
+  </div>
+);
+
+const MonthlyCard = ({ gradient, icon, title, value }: any) => (
+  <div className={`relative overflow-hidden p-8 rounded-[2.5rem] bg-gradient-to-br ${gradient} text-white shadow-2xl shadow-black/10 group`}>
+    <div className="absolute top-[-20px] right-[-20px] opacity-10 group-hover:opacity-20 transition-opacity">
+      <i className={`${icon} text-9xl`}></i>
+    </div>
+    <div className="relative z-10">
+      <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-xl mb-8">
         <i className={icon}></i>
       </div>
-      <p className="text-3xl font-black text-slate-900 tracking-tighter leading-none mb-1">{value.toLocaleString()}</p>
-      <p className="text-[9px] font-black uppercase tracking-widest text-slate-800">{title}</p>
-      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{sub}</p>
+      <p className="text-5xl font-black tracking-tighter mb-2">{value}</p>
+      <p className="text-[11px] font-black uppercase tracking-[0.2em] opacity-80">{title}</p>
     </div>
-  );
-};
-
-const StatBlockPremium = ({ title, value, color, icon }: any) => {
-  const colors: any = {
-    red: "from-red-600 to-red-800 shadow-red-500/20",
-    crimson: "from-rose-500 to-rose-700 shadow-rose-500/20",
-    blue: "from-blue-500 to-blue-700 shadow-blue-500/20",
-    indigo: "from-indigo-500 to-indigo-700 shadow-indigo-500/20",
-    slate: "from-slate-700 to-slate-900 shadow-slate-500/20",
-  };
-  return (
-    <div className={`p-8 rounded-[2.5rem] bg-gradient-to-br ${colors[color]} text-white shadow-2xl hover:scale-105 transition-all duration-500 group relative overflow-hidden`}>
-      <div className="absolute -right-4 -bottom-4 opacity-10 group-hover:scale-150 transition-transform duration-1000">
-        <i className={`${icon} text-9xl`}></i>
-      </div>
-      <div className="relative z-10">
-        <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center mb-6 backdrop-blur-md">
-           <i className={icon}></i>
-        </div>
-        <p className="text-5xl font-black tracking-tighter mb-1 leading-none">{value.toLocaleString()}</p>
-        <p className="text-[11px] font-black uppercase tracking-[0.2em] opacity-80">{title}</p>
-      </div>
-    </div>
-  );
-};
+  </div>
+);
 
 export default RecapView;

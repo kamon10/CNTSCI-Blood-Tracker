@@ -1,64 +1,63 @@
 
 import React from 'react';
-import { DistributionData } from '../types';
+import { DistributionData } from '../types.ts';
 
 interface HistoryListProps {
   records: DistributionData[];
 }
 
 const HistoryList: React.FC<HistoryListProps> = ({ records }) => {
+  const safeRecords = Array.isArray(records) ? records : [];
+  
   return (
-    <div className="bg-white rounded-[3rem] p-10 shadow-2xl border border-slate-100 overflow-hidden">
-      <div className="flex items-center justify-between mb-10">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center text-white shadow-xl">
+    <div className="bg-white rounded-[2.5rem] p-8 shadow-2xl border border-slate-100 overflow-hidden">
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-600 shadow-inner">
             <i className="fa-solid fa-clock-rotate-left"></i>
           </div>
-          <div>
-            <h3 className="text-sm font-black uppercase tracking-widest text-slate-900">Activité</h3>
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest italic">Saisies de session</p>
-          </div>
+          <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Flux d'Activité</h3>
         </div>
-        <div className="bg-red-50 text-red-600 px-4 py-2 rounded-xl border border-red-100 text-[8px] font-black uppercase tracking-[0.2em]">
-          Live
-        </div>
+        <span className="text-[9px] font-bold bg-red-50 text-red-600 px-3 py-1 rounded-full border border-red-100 uppercase tracking-widest">LIVE</span>
       </div>
 
-      <div className="space-y-8 max-h-[700px] overflow-y-auto pr-2 custom-scrollbar">
-        {records.length === 0 ? (
-          <div className="text-center py-20 border-4 border-dashed border-slate-50 rounded-[2.5rem]">
-            <i className="fa-solid fa-feather-pointed text-slate-100 text-6xl mb-4"></i>
-            <p className="text-[10px] font-black text-slate-300 uppercase italic tracking-widest">En attente de saisie...</p>
+      <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+        {safeRecords.length === 0 ? (
+          <div className="text-center py-12 border-2 border-dashed border-slate-100 rounded-[2rem]">
+            <p className="text-xs font-bold text-slate-300 uppercase italic">Aucun mouvement</p>
           </div>
         ) : (
-          [...records].reverse().map((record, idx) => (
-            <div key={idx} className="relative pl-8 border-l-4 border-slate-100 group">
-              <div className="absolute left-[-10px] top-0 w-4 h-4 rounded-full border-4 border-white bg-slate-300 group-hover:bg-red-600 transition-colors duration-500 shadow-sm"></div>
-              
-              <div className="mb-2 flex justify-between items-end">
-                <span className="text-[11px] font-black text-slate-900 uppercase tracking-tighter truncate max-w-[180px]">{record.centreCntsci}</span>
-                <span className="text-[9px] font-bold text-slate-400">{record.horodateur.split(' ')[1]}</span>
-              </div>
+          [...safeRecords].reverse().map((record, idx) => {
+            const time = record.horodateur && record.horodateur.includes(' ') 
+              ? record.horodateur.split(' ')[1] 
+              : '--:--';
 
-              <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 group-hover:bg-white group-hover:shadow-2xl group-hover:shadow-red-500/5 group-hover:border-red-50 transition-all duration-500">
-                <div className="flex justify-between items-center mb-4 border-b border-slate-200 pb-3">
-                  <p className="text-[9px] font-bold text-slate-400 uppercase">Agent: <span className="text-slate-800 font-black">{record.nomAgent}</span></p>
-                  <p className="text-[11px] font-black text-red-600">+{Number(record.nbCgrAdulte) + Number(record.nbCgrPediatrique) + Number(record.nbPlasma) + Number(record.nbPlaquettes)} P.S.</p>
+            return (
+              <div key={idx} className="relative pl-6 border-l-2 border-slate-100 group">
+                <div className="absolute left-[-5px] top-0 w-2 h-2 rounded-full bg-slate-300 group-hover:bg-red-500 transition-colors"></div>
+                <div className="mb-1 flex justify-between items-center">
+                  <span className="text-[10px] font-black text-slate-800 uppercase tracking-tighter truncate max-w-[150px]">
+                    {record.nomStructuresSanitaire || 'Inconnu'}
+                  </span>
+                  <span className="text-[8px] font-bold text-slate-400">{time}</span>
                 </div>
-                
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-white/50 px-3 py-2 rounded-lg border border-slate-100">
-                    <p className="text-[7px] font-black text-red-500 uppercase tracking-widest mb-1">CGR Total</p>
-                    <p className="text-sm font-black text-slate-800 leading-none">{Number(record.nbCgrAdulte) + Number(record.nbCgrPediatrique)}</p>
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 hover:bg-white hover:shadow-xl transition-all duration-300">
+                  <div className="flex justify-between items-center mb-2">
+                    <p className="text-[10px] font-bold text-slate-500">Agent: {record.nomAgent || '---'}</p>
+                    <p className="text-sm font-black text-red-600">Qté: {record.nbPoches || 0}</p>
                   </div>
-                  <div className="bg-white/50 px-3 py-2 rounded-lg border border-slate-100">
-                    <p className="text-[7px] font-black text-blue-500 uppercase tracking-widest mb-1">PSL Total</p>
-                    <p className="text-sm font-black text-slate-800 leading-none">{Number(record.nbPlasma) + Number(record.nbPlaquettes)}</p>
+                  <div className="flex gap-2">
+                    <span className="text-[8px] font-black bg-white px-2 py-1 rounded-md border border-slate-100 uppercase text-slate-600">
+                      {record.typeProduit || '---'}
+                    </span>
+                    <span className="text-[8px] font-black bg-slate-900 text-white px-2 py-1 rounded-md uppercase">
+                      GRP: {record.saGroupe || '---'}
+                    </span>
                   </div>
                 </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

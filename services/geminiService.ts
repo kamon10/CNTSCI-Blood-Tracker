@@ -2,9 +2,21 @@
 import { GoogleGenAI } from "@google/genai";
 import { DistributionData } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+// Sécurité pour éviter que l'app ne plante si process n'est pas défini
+const getApiKey = () => {
+  try {
+    return (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : "";
+  } catch (e) {
+    return "";
+  }
+};
+
+const apiKey = getApiKey();
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 export const analyzeDistribution = async (data: DistributionData) => {
+  if (!ai) return "Analyse IA non configurée.";
+  
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',

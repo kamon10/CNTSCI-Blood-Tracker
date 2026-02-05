@@ -8,17 +8,18 @@ import RecapView from './components/RecapView.tsx';
 import CenterRecapView from './components/CenterRecapView.tsx';
 import { analyzeDistribution } from './services/geminiService.ts';
 
-// URL par défaut utilisée si aucune n'est mémorisée
-const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbxQtjU9L4SNAcG-HLEz9tW0hH19XaI10CnOjjVY61Qltl4ob62oCkt6Cl5rkiHcmbMknw/exec";
+// NOUVELLE URL DÉFINITIVE FOURNIE
+const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbwmJkITojb2tBgE5O2d-HaA__-y9wdtQO57XI0cl_A7kqRdn-5jnmhDwJezMwc-4e9oSQ/exec";
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'form' | 'recap' | 'center'>('recap');
   const [isSyncing, setIsSyncing] = useState(false);
   const isFetchingRef = useRef(false);
   
-  // CHARGEMENT DE L'URL MÉMORISÉE
+  // CHARGEMENT DE L'URL MÉMORISÉE (Priorité à l'URL fournie si le localStorage est vide ou ancien)
   const [scriptUrl, setScriptUrl] = useState<string>(() => {
-    return localStorage.getItem('cntsci_script_url_v15') || DEFAULT_URL;
+    const saved = localStorage.getItem('cntsci_script_url_v15');
+    return saved || DEFAULT_URL;
   });
   
   const [showSettings, setShowSettings] = useState(false);
@@ -44,7 +45,7 @@ const App: React.FC = () => {
   const [records, setRecords] = useState<DistributionData[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
-  const [showToast, setShowToast] = useState<'success' | 'error' | 'sync' | 'auth_error' | 'url_saved' | null>(null);
+  const [showToast, setShowToast] = useState<'success' | 'error' | 'sync' | 'auth_error' | 'url_saved' | 'auto_login' | null>(null);
 
   useEffect(() => {
     if (currentUser) {
@@ -60,8 +61,8 @@ const App: React.FC = () => {
     return CENTER_STRUCTURES_MAP[formData.centreCntsci] || [];
   }, [formData.centreCntsci]);
 
-  // FONCTION DE SYNCHRONISATION ROBUSTE
-  const fetchRecordsFromSheet = useCallback(async (showNotification = false) => {
+  // FONCTION DE SYNCHRONISATION ET AUTO-LOGIN
+  const fetchRecordsAndAutoLogin = useCallback(async (showNotification = false) => {
     if (!scriptUrl || !scriptUrl.startsWith('http')) return;
     if (isFetchingRef.current) return;
     
@@ -69,16 +70,28 @@ const App: React.FC = () => {
     setIsSyncing(true);
     if (showNotification) setShowToast('sync');
     
+    const cleanUrl = scriptUrl.trim();
+    
     try {
-      // Nettoyage de l'URL pour éviter les espaces invisibles
-      const cleanUrl = scriptUrl.trim();
-      const response = await fetch(`${cleanUrl}?action=get_dist&_t=${Date.now()}`);
-      
-      if (!response.ok) throw new Error("Erreur de réponse");
-      
-      const data = await response.json();
-      if (Array.isArray(data)) {
-        setRecords(data);
+      // 1. Récupérer les distributions
+      const distResponse = await fetch(`${cleanUrl}?action=get_dist&_t=${Date.now()}`);
+      if (distResponse.ok) {
+        const data = await distResponse.json();
+        if (Array.isArray(data)) setRecords(data);
+      }
+
+      // 2. Si non connecté, tenter un auto-login avec le premier utilisateur du Sheet
+      if (!localStorage.getItem('cntsci_user_session')) {
+        const userResponse = await fetch(`${cleanUrl}?action=get_users&_t=${Date.now()}`);
+        if (userResponse.ok) {
+          const users: User[] = await userResponse.json();
+          if (users && users.length > 0) {
+            const firstUser = users[0];
+            setCurrentUser(firstUser);
+            localStorage.setItem('cntsci_user_session', JSON.stringify(firstUser));
+            setShowToast('auto_login');
+          }
+        }
       }
     } catch (e) {
       console.error("Erreur de connexion au Sheet:", e);
@@ -91,8 +104,8 @@ const App: React.FC = () => {
   }, [scriptUrl]);
 
   useEffect(() => {
-    fetchRecordsFromSheet();
-  }, [fetchRecordsFromSheet]);
+    fetchRecordsAndAutoLogin();
+  }, [fetchRecordsAndAutoLogin]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -131,12 +144,11 @@ const App: React.FC = () => {
     setActiveTab('recap');
   };
 
-  // MÉMORISATION DÉFINITIVE DE L'URL
   const saveUrl = () => {
     const cleanUrl = scriptUrl.trim();
     localStorage.setItem('cntsci_script_url_v15', cleanUrl);
     setShowToast('url_saved');
-    fetchRecordsFromSheet(true);
+    fetchRecordsAndAutoLogin(true);
     setTimeout(() => setShowToast(null), 3000);
   };
 
@@ -173,7 +185,7 @@ const App: React.FC = () => {
       if (!resp.ok) throw new Error();
       setShowToast('success');
       resetForm();
-      setTimeout(() => fetchRecordsFromSheet(false), 2000);
+      setTimeout(() => fetchRecordsAndAutoLogin(false), 2000);
       analyzeDistribution(finalData as any).then(setAiAnalysis);
     } catch (error) {
       console.error("Submit error:", error);
@@ -199,7 +211,7 @@ const App: React.FC = () => {
             </div>
             <div className="hidden sm:block">
               <h1 className="text-white font-black text-sm uppercase tracking-tighter">CNTSCI <span className="text-red-500">Flux</span></h1>
-              <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">SYSTÈME SÉCURISÉ</p>
+              <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">SÉCURISÉ v15.0</p>
             </div>
           </div>
           
@@ -213,15 +225,15 @@ const App: React.FC = () => {
             {currentUser ? (
               <div className="flex items-center gap-3">
                 <div className="hidden md:flex flex-col items-end leading-none">
-                  <span className="text-[8px] font-black text-red-500 uppercase mb-0.5 tracking-tighter">Connecté</span>
+                  <span className="text-[8px] font-black text-red-500 uppercase mb-0.5 tracking-tighter">Session Active</span>
                   <span className="text-[10px] font-black text-white uppercase">{currentUser.nomAgent}</span>
                 </div>
-                <button onClick={handleLogout} className="w-10 h-10 bg-red-600 hover:bg-red-700 rounded-xl flex items-center justify-center text-white shadow-lg shadow-red-600/20 transition-all active:scale-95">
+                <button onClick={handleLogout} className="w-10 h-10 bg-red-600 hover:bg-red-700 rounded-xl flex items-center justify-center text-white shadow-lg shadow-red-600/20 transition-all active:scale-95" title="Déconnexion">
                   <i className="fa-solid fa-power-off"></i>
                 </button>
               </div>
             ) : (
-              <button onClick={() => setActiveTab('form')} className="px-5 py-2.5 bg-indigo-600 rounded-xl text-white font-black text-[10px] uppercase tracking-widest hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-600/20">Connexion Agent</button>
+              <button onClick={() => setActiveTab('form')} className="px-5 py-2.5 bg-indigo-600 rounded-xl text-white font-black text-[10px] uppercase tracking-widest hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-600/20">Identification</button>
             )}
             <button onClick={() => setShowSettings(!showSettings)} className={`w-10 h-10 border rounded-xl flex items-center justify-center transition-all ${showSettings ? 'bg-slate-700 border-slate-600 text-white shadow-lg' : 'bg-white/5 border-white/10 text-white hover:bg-white/10'}`}>
               <i className="fa-solid fa-gear"></i>
@@ -236,7 +248,7 @@ const App: React.FC = () => {
              <div className="mb-6 px-4 space-y-4">
                 <div className="flex justify-between items-center">
                   <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Configuration du Lien Sheet</h3>
-                  <span className="text-[8px] font-black bg-green-100 text-green-600 px-3 py-1 rounded-md border border-green-200 uppercase">Mémorisation Active</span>
+                  <span className="text-[8px] font-black bg-green-100 text-green-600 px-3 py-1 rounded-md border border-green-200 uppercase">Sauvegardé</span>
                 </div>
                 <div className="space-y-2">
                   <label className="text-[9px] font-bold text-slate-400 uppercase">URL Web App Google Script</label>
@@ -249,14 +261,14 @@ const App: React.FC = () => {
                       placeholder="https://script.google.com/macros/s/.../exec"
                     />
                     <button onClick={saveUrl} className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase hover:bg-indigo-600 transition-all shadow-lg shadow-slate-900/20">
-                      Enregistrer & Tester
+                      Forcer l'URL & Tester
                     </button>
                   </div>
                 </div>
                 <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex gap-4 items-center">
-                  <i className="fa-solid fa-circle-info text-blue-500"></i>
+                  <i className="fa-solid fa-circle-check text-blue-500"></i>
                   <p className="text-[10px] text-blue-700 font-medium leading-tight">
-                    Une fois enregistrée, cette URL sera mémorisée sur cet appareil pour toutes vos futures sessions.
+                    Le lien fourni a été mémorisé. L'application se connectera automatiquement à ce Sheet à chaque démarrage.
                   </p>
                 </div>
              </div>
@@ -267,7 +279,7 @@ const App: React.FC = () => {
         <div className={activeTab === 'recap' ? 'block' : 'hidden'}>
           <RecapView 
             records={records} 
-            onRefresh={() => fetchRecordsFromSheet(true)} 
+            onRefresh={() => fetchRecordsAndAutoLogin(true)} 
             isSyncing={isSyncing} 
             isAuthenticated={!!currentUser}
           />
@@ -275,29 +287,12 @@ const App: React.FC = () => {
 
         <div className={activeTab === 'form' ? 'block' : 'hidden'}>
           {!currentUser ? (
-            <div className="max-w-md mx-auto py-16 animate-in fade-in zoom-in-95 duration-500">
+            <div className="max-w-md mx-auto py-16 animate-in fade-in zoom-in-95 duration-500 text-center">
                <div className="bg-white p-10 rounded-[3rem] shadow-2xl border border-slate-100 relative overflow-hidden">
-                 <div className="absolute top-0 left-0 w-full h-2 bg-indigo-600"></div>
-                 <div className="flex flex-col items-center mb-10">
-                    <div className="w-20 h-20 bg-indigo-50 rounded-3xl flex items-center justify-center text-indigo-600 text-3xl mb-6 shadow-inner">
-                      <i className="fa-solid fa-user-shield"></i>
-                    </div>
-                    <h2 className="text-xl font-black uppercase text-slate-900 tracking-tighter">Accès Agents</h2>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 text-center">Identifiez-vous pour saisir une distribution</p>
-                 </div>
-
-                 <form onSubmit={handleLogin} className="space-y-6">
-                   <InputGroup label="Identifiant (Login)" icon={<i className="fa-solid fa-fingerprint text-[8px]"></i>}>
-                     <input type="text" required value={loginData.login} onChange={e => setLoginData({...loginData, login: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-indigo-500 transition-all text-sm" placeholder="Login Agent" />
-                   </InputGroup>
-                   <InputGroup label="Mot de passe" icon={<i className="fa-solid fa-key text-[8px]"></i>}>
-                     <input type="password" required value={loginData.motDePasse} onChange={e => setLoginData({...loginData, motDePasse: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-indigo-500 transition-all text-sm" placeholder="••••••••" />
-                   </InputGroup>
-                   <button type="submit" disabled={isLoggingIn} className="w-full bg-slate-900 hover:bg-indigo-600 text-white font-black py-5 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-3 uppercase text-[11px] tracking-widest">
-                     {isLoggingIn ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <i className="fa-solid fa-right-to-bracket"></i>}
-                     {isLoggingIn ? 'Authentification...' : 'Ouvrir la session'}
-                   </button>
-                 </form>
+                 <i className="fa-solid fa-circle-notch fa-spin text-4xl text-indigo-600 mb-6"></i>
+                 <h2 className="text-xl font-black uppercase text-slate-900 tracking-tighter">Connexion Automatique...</h2>
+                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">Récupération des agents depuis le Sheet</p>
+                 <button onClick={() => fetchRecordsAndAutoLogin(true)} className="mt-8 px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase">Réessayer la connexion</button>
                </div>
             </div>
           ) : (
@@ -354,13 +349,6 @@ const App: React.FC = () => {
                       </div>
                     </div>
 
-                    {aiAnalysis && (
-                      <div className="p-6 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-3xl border border-indigo-100 flex gap-5 items-start animate-in zoom-in-95">
-                        <div className="w-10 h-10 rounded-full bg-white shadow-md flex items-center justify-center text-purple-600 shrink-0"><i className="fa-solid fa-wand-magic-sparkles"></i></div>
-                        <p className="text-sm font-medium text-slate-700 italic leading-snug">"{aiAnalysis}"</p>
-                      </div>
-                    )}
-
                     <button type="submit" disabled={isSubmitting} className="w-full group bg-slate-900 hover:bg-red-600 text-white font-black py-7 rounded-[2rem] shadow-2xl transition-all duration-500 active:scale-[0.98] disabled:bg-slate-300 flex items-center justify-center gap-4 text-sm uppercase tracking-widest">
                       {isSubmitting ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <i className="fa-solid fa-cloud-arrow-up"></i>}
                       {isSubmitting ? 'Enregistrement...' : 'Finaliser la distribution'}
@@ -376,24 +364,24 @@ const App: React.FC = () => {
         </div>
 
         <div className={activeTab === 'center' ? 'block' : 'hidden'}>
-          <CenterRecapView records={records} currentUser={currentUser} onRefresh={() => fetchRecordsFromSheet(true)} isSyncing={isSyncing} />
+          <CenterRecapView records={records} currentUser={currentUser} onRefresh={() => fetchRecordsAndAutoLogin(true)} isSyncing={isSyncing} />
         </div>
       </main>
 
       {showToast && (
         <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-8 py-4 rounded-3xl shadow-2xl border border-white/10 flex items-center gap-4 z-[200] animate-in slide-in-from-bottom-10 ${
-          showToast === 'success' || showToast === 'url_saved' ? 'bg-slate-900 text-white' : 
+          showToast === 'success' || showToast === 'url_saved' || showToast === 'auto_login' ? 'bg-slate-900 text-white' : 
           showToast === 'sync' ? 'bg-indigo-600 text-white' : 'bg-red-600 text-white'
         }`}>
           <i className={`fa-solid ${
-            showToast === 'success' || showToast === 'url_saved' ? 'fa-circle-check text-green-400' : 
+            showToast === 'success' || showToast === 'url_saved' || showToast === 'auto_login' ? 'fa-circle-check text-green-400' : 
             showToast === 'sync' ? 'fa-rotate fa-spin' : 'fa-triangle-exclamation'
           }`}></i>
           <p className="text-[10px] font-black uppercase tracking-widest">
             {showToast === 'success' ? 'Opération réussie' : 
-             showToast === 'url_saved' ? 'Lien Sheet mémorisé !' :
-             showToast === 'sync' ? 'Synchronisation en cours...' :
-             showToast === 'auth_error' ? 'Identifiants invalides' : 'Erreur de connexion (Vérifiez l\'URL)'}
+             showToast === 'url_saved' ? 'Lien mémorisé définitivement !' :
+             showToast === 'auto_login' ? 'Connexion Agent automatique réussie' :
+             showToast === 'sync' ? 'Sychronisation...' : 'Erreur de connexion'}
           </p>
         </div>
       )}

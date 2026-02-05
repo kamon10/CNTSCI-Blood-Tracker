@@ -87,13 +87,14 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, is
 
   return (
     <div className="space-y-12 animate-in fade-in duration-700 pb-20">
-      {/* FILTRES HAUT DE PAGE - GRISE SI NON AUTHENTIFIE */}
-      <div className={`bg-white p-6 rounded-[2.5rem] shadow-2xl flex flex-wrap items-center gap-6 border border-slate-100 sticky top-28 z-40 transition-all duration-500 ${!isAuthenticated ? 'opacity-60 grayscale-[0.8] pointer-events-none select-none' : ''}`}>
+      {/* BARRE DE FILTRES - GRISEE SI NON AUTHENTIFIE */}
+      <div className={`bg-white p-6 rounded-[2.5rem] shadow-2xl flex flex-wrap items-center gap-6 border border-slate-100 sticky top-28 z-40 transition-all duration-500 ${!isAuthenticated ? 'opacity-40 grayscale pointer-events-none select-none' : ''}`}>
         
         {!isAuthenticated && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
-            <span className="bg-slate-900/90 text-white text-[8px] font-black uppercase tracking-[0.2em] px-4 py-2 rounded-full shadow-2xl backdrop-blur-sm border border-white/10">
-              <i className="fa-solid fa-lock mr-2 text-red-500"></i> Accès restreint : Identifiez-vous pour filtrer
+          <div className="absolute inset-0 z-[60] flex items-center justify-center pointer-events-none">
+            <span className="bg-slate-900/95 text-white text-[8px] font-black uppercase tracking-[0.2em] px-5 py-2.5 rounded-full shadow-2xl backdrop-blur-sm border border-white/10 flex items-center gap-3">
+              <i className="fa-solid fa-lock text-red-500 text-xs"></i> 
+              Accès Lecture Seule : Identifiez-vous pour contrôler
             </span>
           </div>
         )}
@@ -101,17 +102,17 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, is
         <div className="flex bg-slate-50 p-1.5 rounded-2xl border border-slate-200">
            <div className="flex items-center gap-2 px-4 py-2 border-r border-slate-200">
              <i className="fa-solid fa-calendar-day text-blue-600 text-sm"></i>
-             <select disabled={!isAuthenticated} value={selectedDay} onChange={e => setSelectedDay(e.target.value)} className="bg-transparent font-black text-xs uppercase outline-none cursor-pointer disabled:cursor-not-allowed">
+             <select disabled={!isAuthenticated} value={selectedDay} onChange={e => setSelectedDay(e.target.value)} className="bg-transparent font-black text-xs uppercase outline-none cursor-pointer">
                 <option value="TOUS">JOUR</option>
                 {days.map(d => <option key={d} value={d}>{d}</option>)}
              </select>
            </div>
            <div className="flex items-center gap-2 px-4 py-2 border-r border-slate-200">
-             <select disabled={!isAuthenticated} value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-transparent font-black text-xs uppercase outline-none cursor-pointer disabled:cursor-not-allowed">
+             <select disabled={!isAuthenticated} value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-transparent font-black text-xs uppercase outline-none cursor-pointer">
                 {months.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
              </select>
            </div>
-           <select disabled={!isAuthenticated} value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className="bg-transparent px-4 py-2 font-black text-xs uppercase outline-none cursor-pointer disabled:cursor-not-allowed">
+           <select disabled={!isAuthenticated} value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className="bg-transparent px-4 py-2 font-black text-xs uppercase outline-none cursor-pointer">
               <option value="2024">2024</option>
               <option value="2025">2025</option>
               <option value="2026">2026</option>
@@ -120,7 +121,7 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, is
 
         <div className="flex-1 flex items-center gap-3 bg-slate-50 px-5 py-3 rounded-2xl border border-slate-200">
           <i className="fa-solid fa-map-pin text-red-500"></i>
-          <select disabled={!isAuthenticated} value={selectedSite} onChange={e => setSelectedSite(e.target.value)} className="w-full bg-transparent font-black text-xs uppercase outline-none cursor-pointer disabled:cursor-not-allowed">
+          <select disabled={!isAuthenticated} value={selectedSite} onChange={e => setSelectedSite(e.target.value)} className="w-full bg-transparent font-black text-xs uppercase outline-none cursor-pointer">
             <option value="TOUS LES SITES">TOUS LES CENTRES CNTSCI</option>
             {CNTSCI_CENTERS.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
@@ -131,8 +132,8 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, is
           disabled={isSyncing || !isAuthenticated} 
           className={`px-8 py-3.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-3 shadow-lg ${
             !isAuthenticated 
-            ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
-            : 'bg-slate-900 text-white hover:bg-red-600 shadow-slate-900/20 active:scale-95'
+            ? 'bg-slate-100 text-slate-300' 
+            : 'bg-slate-900 text-white hover:bg-red-600 active:scale-95'
           }`}
         >
           <i className={`fa-solid fa-rotate ${isSyncing ? 'fa-spin' : ''}`}></i>
@@ -208,9 +209,6 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, is
             <i className="fa-solid fa-table-cells text-red-600 text-xl"></i>
             <h2 className="text-sm font-black uppercase tracking-[0.2em] text-slate-800">Registre de Distribution Détaillé</h2>
           </div>
-          <div className="text-right">
-            <p className="text-[10px] font-black uppercase text-slate-400">Affichage : <span className="text-red-600">{selectedDay !== 'TOUS' ? `JOUR ${selectedDay}` : 'TOUT LE MOIS'}</span></p>
-          </div>
         </div>
         
         <div className="overflow-x-auto">
@@ -232,7 +230,7 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, is
                 <tr>
                   <td colSpan={14} className="py-20 text-center">
                     <i className="fa-solid fa-folder-open text-4xl text-slate-100 mb-4"></i>
-                    <p className="text-[10px] font-black uppercase text-slate-300">Aucune distribution enregistrée pour cette sélection</p>
+                    <p className="text-[10px] font-black uppercase text-slate-300">Aucune distribution enregistrée</p>
                   </td>
                 </tr>
               ) : (
@@ -270,11 +268,8 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, is
                       </React.Fragment>
                     ))}
                     <tr className="bg-slate-50/80 font-black">
-                      <td colSpan={2} className="px-6 py-6 text-right uppercase text-[9px] tracking-widest text-slate-400">
+                      <td colSpan={3} className="px-6 py-6 text-right uppercase text-[9px] tracking-widest text-slate-400">
                         SOUS-TOTAL {siteName}
-                      </td>
-                      <td className="px-6 py-6">
-                        <span className="px-3 py-1 bg-slate-200 text-slate-700 rounded-md text-[8px] uppercase">TOTAL SITE</span>
                       </td>
                       {BLOOD_GROUPS.map(g => (
                         <td key={g} className="px-3 py-6 text-center text-xs">

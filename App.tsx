@@ -8,18 +8,17 @@ import RecapView from './components/RecapView.tsx';
 import CenterRecapView from './components/CenterRecapView.tsx';
 import { analyzeDistribution } from './services/geminiService.ts';
 
-// URL par défaut (celle fournie précédemment)
+// URL par défaut utilisée si aucune n'est mémorisée
 const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbxQtjU9L4SNAcG-HLEz9tW0hH19XaI10CnOjjVY61Qltl4ob62oCkt6Cl5rkiHcmbMknw/exec";
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'form' | 'recap' | 'center'>('recap');
   const [isSyncing, setIsSyncing] = useState(false);
   const isFetchingRef = useRef(false);
-  const [lastSync, setLastSync] = useState<string | null>(null);
   
-  // URL persistante : on cherche dans le localStorage, sinon on prend la par défaut
+  // CHARGEMENT DE L'URL MÉMORISÉE
   const [scriptUrl, setScriptUrl] = useState<string>(() => {
-    return localStorage.getItem('cntsci_script_url') || DEFAULT_URL;
+    return localStorage.getItem('cntsci_script_url_v15') || DEFAULT_URL;
   });
   
   const [showSettings, setShowSettings] = useState(false);
@@ -45,7 +44,7 @@ const App: React.FC = () => {
   const [records, setRecords] = useState<DistributionData[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
-  const [showToast, setShowToast] = useState<'success' | 'error' | 'sync' | 'auth_error' | 'url_error' | null>(null);
+  const [showToast, setShowToast] = useState<'success' | 'error' | 'sync' | 'auth_error' | 'url_saved' | null>(null);
 
   useEffect(() => {
     if (currentUser) {
@@ -61,9 +60,9 @@ const App: React.FC = () => {
     return CENTER_STRUCTURES_MAP[formData.centreCntsci] || [];
   }, [formData.centreCntsci]);
 
-  // Fonction fetch améliorée
+  // FONCTION DE SYNCHRONISATION ROBUSTE
   const fetchRecordsFromSheet = useCallback(async (showNotification = false) => {
-    if (!scriptUrl || scriptUrl.trim() === "") return;
+    if (!scriptUrl || !scriptUrl.startsWith('http')) return;
     if (isFetchingRef.current) return;
     
     isFetchingRef.current = true;
@@ -71,20 +70,18 @@ const App: React.FC = () => {
     if (showNotification) setShowToast('sync');
     
     try {
-      const response = await fetch(`${scriptUrl}?action=get_dist&_t=${Date.now()}`, {
-        method: 'GET',
-        redirect: 'follow'
-      });
+      // Nettoyage de l'URL pour éviter les espaces invisibles
+      const cleanUrl = scriptUrl.trim();
+      const response = await fetch(`${cleanUrl}?action=get_dist&_t=${Date.now()}`);
       
-      if (!response.ok) throw new Error("HTTP " + response.status);
+      if (!response.ok) throw new Error("Erreur de réponse");
       
       const data = await response.json();
       if (Array.isArray(data)) {
         setRecords(data);
-        setLastSync(new Date().toLocaleTimeString('fr-FR'));
       }
     } catch (e) {
-      console.error("Fetch error:", e);
+      console.error("Erreur de connexion au Sheet:", e);
       if (showNotification) setShowToast('error');
     } finally {
       setIsSyncing(false);
@@ -101,11 +98,7 @@ const App: React.FC = () => {
     e.preventDefault();
     setIsLoggingIn(true);
     try {
-      const resp = await fetch(`${scriptUrl}?action=get_users&_t=${Date.now()}`, {
-        method: 'GET',
-        redirect: 'follow'
-      });
-      
+      const resp = await fetch(`${scriptUrl.trim()}?action=get_users&_t=${Date.now()}`);
       if (!resp.ok) throw new Error("Network Error");
       
       const users: User[] = await resp.json();
@@ -138,10 +131,13 @@ const App: React.FC = () => {
     setActiveTab('recap');
   };
 
-  const handleUrlChange = (newUrl: string) => {
-    const cleanUrl = newUrl.trim();
-    setScriptUrl(cleanUrl);
-    localStorage.setItem('cntsci_script_url', cleanUrl);
+  // MÉMORISATION DÉFINITIVE DE L'URL
+  const saveUrl = () => {
+    const cleanUrl = scriptUrl.trim();
+    localStorage.setItem('cntsci_script_url_v15', cleanUrl);
+    setShowToast('url_saved');
+    fetchRecordsFromSheet(true);
+    setTimeout(() => setShowToast(null), 3000);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -173,11 +169,7 @@ const App: React.FC = () => {
     Object.entries(finalData).forEach(([key, val]) => params.append(key, val.toString()));
 
     try {
-      const resp = await fetch(`${scriptUrl}?${params.toString()}`, { 
-        method: 'GET',
-        redirect: 'follow'
-      });
-      
+      const resp = await fetch(`${scriptUrl.trim()}?${params.toString()}`);
       if (!resp.ok) throw new Error();
       setShowToast('success');
       resetForm();
@@ -207,7 +199,7 @@ const App: React.FC = () => {
             </div>
             <div className="hidden sm:block">
               <h1 className="text-white font-black text-sm uppercase tracking-tighter">CNTSCI <span className="text-red-500">Flux</span></h1>
-              <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">SÉCURITÉ v15.0</p>
+              <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">SYSTÈME SÉCURISÉ</p>
             </div>
           </div>
           
@@ -221,15 +213,15 @@ const App: React.FC = () => {
             {currentUser ? (
               <div className="flex items-center gap-3">
                 <div className="hidden md:flex flex-col items-end leading-none">
-                  <span className="text-[8px] font-black text-red-500 uppercase mb-0.5 tracking-tighter">Agent Connecté</span>
+                  <span className="text-[8px] font-black text-red-500 uppercase mb-0.5 tracking-tighter">Connecté</span>
                   <span className="text-[10px] font-black text-white uppercase">{currentUser.nomAgent}</span>
                 </div>
-                <button onClick={handleLogout} className="w-10 h-10 bg-red-600 hover:bg-red-700 rounded-xl flex items-center justify-center text-white shadow-lg shadow-red-600/20 transition-all active:scale-95" title="Se déconnecter">
+                <button onClick={handleLogout} className="w-10 h-10 bg-red-600 hover:bg-red-700 rounded-xl flex items-center justify-center text-white shadow-lg shadow-red-600/20 transition-all active:scale-95">
                   <i className="fa-solid fa-power-off"></i>
                 </button>
               </div>
             ) : (
-              <button onClick={() => setActiveTab('form')} className="px-5 py-2.5 bg-indigo-600 rounded-xl text-white font-black text-[10px] uppercase tracking-widest hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-600/20">Identifiez-vous</button>
+              <button onClick={() => setActiveTab('form')} className="px-5 py-2.5 bg-indigo-600 rounded-xl text-white font-black text-[10px] uppercase tracking-widest hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-600/20">Connexion Agent</button>
             )}
             <button onClick={() => setShowSettings(!showSettings)} className={`w-10 h-10 border rounded-xl flex items-center justify-center transition-all ${showSettings ? 'bg-slate-700 border-slate-600 text-white shadow-lg' : 'bg-white/5 border-white/10 text-white hover:bg-white/10'}`}>
               <i className="fa-solid fa-gear"></i>
@@ -242,22 +234,29 @@ const App: React.FC = () => {
         {showSettings && (
           <div className="mb-8 bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-200 animate-in slide-in-from-top-4">
              <div className="mb-6 px-4 space-y-4">
-                <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Configuration de la connexion Sheet</h3>
-                <div className="space-y-2">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase">URL de l'application Web Google Script</label>
-                  <input 
-                    type="text" 
-                    className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-[10px] font-mono outline-none focus:border-indigo-500 transition-all"
-                    value={scriptUrl}
-                    onChange={(e) => handleUrlChange(e.target.value)}
-                    placeholder="https://script.google.com/macros/s/.../exec"
-                  />
+                <div className="flex justify-between items-center">
+                  <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Configuration du Lien Sheet</h3>
+                  <span className="text-[8px] font-black bg-green-100 text-green-600 px-3 py-1 rounded-md border border-green-200 uppercase">Mémorisation Active</span>
                 </div>
-                <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 flex gap-4 items-center">
-                  <i className="fa-solid fa-circle-info text-amber-500"></i>
-                  <p className="text-[10px] text-amber-700 font-medium leading-tight">
-                    Si vous avez une <b>erreur de connexion</b>, vérifiez que votre script est publié avec l'accès : <br/>
-                    <span className="font-bold">"Who has access: Anyone"</span>.
+                <div className="space-y-2">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase">URL Web App Google Script</label>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <input 
+                      type="text" 
+                      className="flex-1 px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-[10px] font-mono outline-none focus:border-indigo-500 transition-all"
+                      value={scriptUrl}
+                      onChange={(e) => setScriptUrl(e.target.value)}
+                      placeholder="https://script.google.com/macros/s/.../exec"
+                    />
+                    <button onClick={saveUrl} className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase hover:bg-indigo-600 transition-all shadow-lg shadow-slate-900/20">
+                      Enregistrer & Tester
+                    </button>
+                  </div>
+                </div>
+                <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex gap-4 items-center">
+                  <i className="fa-solid fa-circle-info text-blue-500"></i>
+                  <p className="text-[10px] text-blue-700 font-medium leading-tight">
+                    Une fois enregistrée, cette URL sera mémorisée sur cet appareil pour toutes vos futures sessions.
                   </p>
                 </div>
              </div>
@@ -289,14 +288,14 @@ const App: React.FC = () => {
 
                  <form onSubmit={handleLogin} className="space-y-6">
                    <InputGroup label="Identifiant (Login)" icon={<i className="fa-solid fa-fingerprint text-[8px]"></i>}>
-                     <input type="text" required value={loginData.login} onChange={e => setLoginData({...loginData, login: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-indigo-500 transition-all text-sm" placeholder="Login CNTSCI" />
+                     <input type="text" required value={loginData.login} onChange={e => setLoginData({...loginData, login: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-indigo-500 transition-all text-sm" placeholder="Login Agent" />
                    </InputGroup>
                    <InputGroup label="Mot de passe" icon={<i className="fa-solid fa-key text-[8px]"></i>}>
                      <input type="password" required value={loginData.motDePasse} onChange={e => setLoginData({...loginData, motDePasse: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-indigo-500 transition-all text-sm" placeholder="••••••••" />
                    </InputGroup>
-                   <button type="submit" disabled={isLoggingIn} className="w-full bg-slate-900 hover:bg-indigo-600 text-white font-black py-5 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-3 uppercase text-[11px] tracking-widest active:scale-95">
+                   <button type="submit" disabled={isLoggingIn} className="w-full bg-slate-900 hover:bg-indigo-600 text-white font-black py-5 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-3 uppercase text-[11px] tracking-widest">
                      {isLoggingIn ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <i className="fa-solid fa-right-to-bracket"></i>}
-                     {isLoggingIn ? 'Vérification...' : 'Ouvrir la session'}
+                     {isLoggingIn ? 'Authentification...' : 'Ouvrir la session'}
                    </button>
                  </form>
                </div>
@@ -315,13 +314,13 @@ const App: React.FC = () => {
 
                   <div className="p-8 md:p-12 space-y-10">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <InputGroup label="Agent de Saisie" icon={<i className="fa-solid fa-user-check text-red-600"></i>} description="Profil vérifié.">
+                      <InputGroup label="Agent de Saisie" icon={<i className="fa-solid fa-user-check text-red-600"></i>}>
                         <input type="text" readOnly value={currentUser.nomAgent} className="w-full px-6 py-4 bg-slate-100 border-2 border-slate-100 rounded-2xl font-bold text-slate-500 outline-none cursor-not-allowed text-xs" />
                       </InputGroup>
                       <InputGroup label="Date Distribution" icon={<i className="fa-solid fa-calendar text-red-600"></i>}>
                         <input type="date" name="dateDistribution" required value={formData.dateDistribution} onChange={handleInputChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-slate-800 focus:border-red-500 outline-none transition-all text-xs" />
                       </InputGroup>
-                      <InputGroup label="Centre Emetteur" icon={<i className="fa-solid fa-hospital text-red-600"></i>} description="Centre d'affectation verrouillé.">
+                      <InputGroup label="Centre Emetteur" icon={<i className="fa-solid fa-hospital text-red-600"></i>}>
                         <input type="text" readOnly value={currentUser.centreAffectation} className="w-full px-6 py-4 bg-slate-100 border-2 border-slate-100 rounded-2xl font-black text-slate-500 outline-none cursor-not-allowed text-xs" />
                       </InputGroup>
                     </div>
@@ -383,18 +382,18 @@ const App: React.FC = () => {
 
       {showToast && (
         <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-8 py-4 rounded-3xl shadow-2xl border border-white/10 flex items-center gap-4 z-[200] animate-in slide-in-from-bottom-10 ${
-          showToast === 'success' ? 'bg-slate-900 text-white' : 
-          showToast === 'url_error' ? 'bg-amber-600 text-white' : 'bg-red-600 text-white'
+          showToast === 'success' || showToast === 'url_saved' ? 'bg-slate-900 text-white' : 
+          showToast === 'sync' ? 'bg-indigo-600 text-white' : 'bg-red-600 text-white'
         }`}>
           <i className={`fa-solid ${
-            showToast === 'success' ? 'fa-circle-check text-green-400' : 
-            showToast === 'auth_error' ? 'fa-user-xmark' : 
-            showToast === 'url_error' ? 'fa-link-slash' : 'fa-triangle-exclamation'
+            showToast === 'success' || showToast === 'url_saved' ? 'fa-circle-check text-green-400' : 
+            showToast === 'sync' ? 'fa-rotate fa-spin' : 'fa-triangle-exclamation'
           }`}></i>
           <p className="text-[10px] font-black uppercase tracking-widest">
             {showToast === 'success' ? 'Opération réussie' : 
-             showToast === 'auth_error' ? 'Identifiants invalides' : 
-             showToast === 'url_error' ? 'Configurez l\'URL du script' : 'Erreur de connexion (Vérifiez l\'URL et le script)'}
+             showToast === 'url_saved' ? 'Lien Sheet mémorisé !' :
+             showToast === 'sync' ? 'Synchronisation en cours...' :
+             showToast === 'auth_error' ? 'Identifiants invalides' : 'Erreur de connexion (Vérifiez l\'URL)'}
           </p>
         </div>
       )}

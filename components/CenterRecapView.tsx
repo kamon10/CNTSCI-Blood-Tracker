@@ -14,13 +14,11 @@ const CenterRecapView: React.FC<CenterRecapViewProps> = ({ records, currentUser,
   const chartRef = useRef<HTMLCanvasElement>(null);
   const chartInstance = useRef<any>(null);
 
-  // 1. Filtrer les données pour le centre de l'utilisateur
   const centerRecords = useMemo(() => {
     if (!currentUser) return [];
     return records.filter(r => r.centreCntsci === currentUser.centreAffectation);
   }, [records, currentUser]);
 
-  // 2. Calculer les statistiques du centre
   const stats = useMemo(() => {
     const s = {
       totalPoches: 0,
@@ -29,7 +27,6 @@ const CenterRecapView: React.FC<CenterRecapViewProps> = ({ records, currentUser,
       dailyVolume: {} as Record<string, number>
     };
 
-    // Trier pour les 14 derniers jours
     const now = new Date();
     const fourteenDaysAgo = new Date(now.getTime() - (14 * 24 * 60 * 60 * 1000));
 
@@ -40,23 +37,21 @@ const CenterRecapView: React.FC<CenterRecapViewProps> = ({ records, currentUser,
       s.totalPoches += qty;
       if (r.nomStructuresSanitaire) s.structuresUnique.add(r.nomStructuresSanitaire);
       
-      // Mix produit
       s.productMix[r.typeProduit] = (s.productMix[r.typeProduit] || 0) + qty;
 
-      // Volume journalier (si dans les 14 jours)
       if (date >= fourteenDaysAgo) {
         const dateStr = date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
         s.dailyVolume[dateStr] = (s.dailyVolume[dateStr] || 0) + qty;
       }
     });
 
-    // Trouver le produit phare
-    const topProduct = Object.entries(s.productMix).reduce((a, b) => a[1] > b[1] ? a : b, ["N/A", 0]);
+    const topProduct = Object.entries(s.productMix).length > 0 
+      ? Object.entries(s.productMix).reduce((a, b) => a[1] > b[1] ? a : b, ["N/A", 0])
+      : ["AUCUN", 0];
 
     return { ...s, topProduct };
   }, [centerRecords]);
 
-  // 3. Classement des structures servies
   const topStructures = useMemo(() => {
     const map: Record<string, number> = {};
     centerRecords.forEach(r => {
@@ -65,40 +60,48 @@ const CenterRecapView: React.FC<CenterRecapViewProps> = ({ records, currentUser,
     return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 5);
   }, [centerRecords]);
 
-  // 4. Graphique
   useEffect(() => {
     if (chartRef.current && Object.keys(stats.dailyVolume).length > 0) {
-      if (chartInstance.current) chartInstance.current.destroy();
-      
-      const labels = Object.keys(stats.dailyVolume);
-      const data = Object.values(stats.dailyVolume);
-
-      chartInstance.current = new Chart(chartRef.current, {
-        type: 'line',
-        data: {
-          labels,
-          datasets: [{
-            label: 'Volume Poches',
-            data,
-            borderColor: '#ef4444',
-            backgroundColor: 'rgba(239, 68, 68, 0.1)',
-            fill: true,
-            tension: 0.4,
-            pointBackgroundColor: '#ef4444',
-            pointRadius: 4
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: {
-            y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
-            x: { grid: { display: false } }
-          }
+      try {
+        if (chartInstance.current) {
+          chartInstance.current.destroy();
         }
-      });
+        
+        const labels = Object.keys(stats.dailyVolume);
+        const data = Object.values(stats.dailyVolume);
+
+        chartInstance.current = new Chart(chartRef.current, {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [{
+              label: 'Volume Poches',
+              data,
+              borderColor: '#ef4444',
+              backgroundColor: 'rgba(239, 68, 68, 0.1)',
+              fill: true,
+              tension: 0.4,
+              pointBackgroundColor: '#ef4444',
+              pointRadius: 4
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
+              x: { grid: { display: false } }
+            }
+          }
+        });
+      } catch (e) {
+        console.error("Chart.js init error:", e);
+      }
     }
+    return () => {
+      if (chartInstance.current) chartInstance.current.destroy();
+    };
   }, [stats.dailyVolume]);
 
   if (!currentUser) {
@@ -113,7 +116,6 @@ const CenterRecapView: React.FC<CenterRecapViewProps> = ({ records, currentUser,
 
   return (
     <div className="space-y-10 animate-in fade-in zoom-in-95 duration-700 pb-20">
-      {/* HEADER CENTRE */}
       <div className="bg-white p-8 rounded-[3rem] shadow-2xl border border-slate-100 flex flex-wrap items-center justify-between gap-6">
         <div className="flex items-center gap-6">
            <div className="w-16 h-16 bg-red-600 rounded-3xl flex items-center justify-center text-white text-2xl shadow-xl shadow-red-600/30">
@@ -132,7 +134,6 @@ const CenterRecapView: React.FC<CenterRecapViewProps> = ({ records, currentUser,
         </button>
       </div>
 
-      {/* KPI GRID */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-slate-900 p-10 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden group">
           <div className="absolute right-[-20px] bottom-[-20px] text-white/5 text-9xl transform -rotate-12 transition-transform group-hover:rotate-0">
@@ -157,19 +158,18 @@ const CenterRecapView: React.FC<CenterRecapViewProps> = ({ records, currentUser,
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* CHART ACTIVITE */}
         <div className="lg:col-span-8 bg-white p-12 rounded-[3.5rem] shadow-2xl border border-slate-50 flex flex-col min-h-[450px]">
           <div className="flex justify-between items-center mb-10">
             <h3 className="text-xs font-black uppercase tracking-widest text-slate-800 flex items-center gap-3">
-              <span className="w-3 h-3 rounded-full bg-red-600 animate-pulse"></span> Flux Logistique (14 derniers jours)
+              <span className="w-3 h-3 rounded-full bg-red-600 animate-pulse"></span> Flux Logistique (14 jours)
             </h3>
             <span className="text-[9px] font-black bg-slate-100 px-3 py-1 rounded-full text-slate-500 uppercase">Performance Live</span>
           </div>
-          <div className="flex-1">
+          <div className="flex-1 relative">
             {Object.keys(stats.dailyVolume).length > 0 ? (
               <canvas ref={chartRef}></canvas>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-slate-200 uppercase font-black text-xs italic">
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-200 uppercase font-black text-xs italic">
                 <i className="fa-solid fa-chart-line text-4xl mb-4"></i>
                 Pas de données récentes
               </div>
@@ -177,7 +177,6 @@ const CenterRecapView: React.FC<CenterRecapViewProps> = ({ records, currentUser,
           </div>
         </div>
 
-        {/* TOP STRUCTURES */}
         <div className="lg:col-span-4 bg-white rounded-[3.5rem] shadow-2xl border border-slate-100 overflow-hidden flex flex-col">
           <div className="p-10 bg-slate-900 text-white">
             <h3 className="text-[10px] font-black uppercase tracking-widest text-center">Top 5 Clients du Centre</h3>
@@ -196,9 +195,6 @@ const CenterRecapView: React.FC<CenterRecapViewProps> = ({ records, currentUser,
               </div>
             ))}
             {topStructures.length === 0 && <div className="text-center py-24 text-slate-200 uppercase font-black text-[10px]">Aucun mouvement</div>}
-          </div>
-          <div className="p-8 bg-slate-50 text-center border-t border-slate-100">
-             <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest italic">Basé sur l'historique total du centre</p>
           </div>
         </div>
       </div>

@@ -1,127 +1,120 @@
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { DistributionData, CNTSCI_CENTERS } from './types';
-import { ICONS } from './constants';
-import InputGroup from './components/InputGroup';
-import HistoryList from './components/HistoryList';
-import ScriptInstruction from './components/ScriptInstruction';
-import RecapView from './components/RecapView';
-import { analyzeDistribution } from './services/geminiService';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { DistributionData, CNTSCI_CENTERS, CENTER_STRUCTURES_MAP, PRODUCT_TYPES, BLOOD_GROUPS } from './types.ts';
+import InputGroup from './components/InputGroup.tsx';
+import HistoryList from './components/HistoryList.tsx';
+import ScriptInstruction from './components/ScriptInstruction.tsx';
+import RecapView from './components/RecapView.tsx';
+import WeeklyView from './components/WeeklyView.tsx';
+import { analyzeDistribution } from './services/geminiService.ts';
 
-const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxCUbBffPJ1l-NnPwEU48MFcGV4Uu8Jlg8chZhENyK0CeFcyq4dHIfZA0Y4ZrcI_Fc-0Q/exec";
+const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxQtjU9L4SNAcG-HLEz9tW0hH19XaI10CnOjjVY61Qltl4ob62oCkt6Cl5rkiHcmbMknw/exec";
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'form' | 'recap'>('form');
+  const [activeTab, setActiveTab] = useState<'form' | 'recap' | 'weekly'>('form');
   const [isSyncing, setIsSyncing] = useState(false);
+  const isFetchingRef = useRef(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [scriptUrl, setScriptUrl] = useState<string>(() => localStorage.getItem('cntsci_script_url') || DEFAULT_SCRIPT_URL);
-  const [connError, setConnError] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
   
   const [formData, setFormData] = useState<any>({
-    nomAgent: '',
+    nomAgent: localStorage.getItem('cntsci_last_agent') || '',
     dateDistribution: new Date().toISOString().split('T')[0],
     centreCntsci: CNTSCI_CENTERS[0],
-    nbCgrAdulte: '',
-    nbCgrPediatrique: '',
-    nbPlasma: '',
-    nbPlaquettes: '',
-    nbStructuresSanitaire: '',
+    nomStructuresSanitaire: '',
+    typeProduit: PRODUCT_TYPES[0],
+    saGroupe: BLOOD_GROUPS[0],
+    nbPoches: '',
   });
 
   const [records, setRecords] = useState<DistributionData[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [showToast, setShowToast] = useState<'success' | 'error' | 'sync' | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
-  const [centerSearch, setCenterSearch] = useState('');
+
+  const structureSuggestions = useMemo(() => {
+    return CENTER_STRUCTURES_MAP[formData.centreCntsci] || [];
+  }, [formData.centreCntsci]);
 
   const fetchRecordsFromSheet = useCallback(async (showNotification = false) => {
-    if (!scriptUrl || isSyncing) return;
+    if (!scriptUrl || isFetchingRef.current) return;
+    
+    isFetchingRef.current = true;
     setIsSyncing(true);
     if (showNotification) setShowToast('sync');
-    setConnError(null);
     
     try {
-      const response = await fetch(scriptUrl, {
-        method: 'GET',
-        mode: 'cors',
-        headers: { 'Accept': 'application/json' },
-      });
-      
-      if (!response.ok) throw new Error(`Erreur HTTP: ${response.status}`);
+      const response = await fetch(`${scriptUrl}?action=get_dist&_t=${Date.now()}`);
       const data = await response.json();
-      
       if (Array.isArray(data)) {
         setRecords(data);
-        localStorage.setItem('cntsci_records', JSON.stringify(data));
         setLastSync(new Date().toLocaleTimeString('fr-FR'));
-      } else {
-        throw new Error("Données JSON invalides reçues");
       }
-    } catch (error: any) {
-      console.error("Connexion Error:", error);
-      setConnError(error.message === "Failed to fetch" ? "Serveur inaccessible" : error.message);
+    } catch (e) {
+      console.error("Fetch error:", e);
       if (showNotification) setShowToast('error');
     } finally {
       setIsSyncing(false);
+      isFetchingRef.current = false;
       setTimeout(() => setShowToast(null), 3000);
     }
-  }, [scriptUrl, isSyncing]);
+  }, [scriptUrl]);
 
   useEffect(() => {
-    const saved = localStorage.getItem('cntsci_records');
-    if (saved) setRecords(JSON.parse(saved));
-    if (scriptUrl) fetchRecordsFromSheet();
-  }, [scriptUrl, fetchRecordsFromSheet]);
+    if (scriptUrl) {
+      fetchRecordsFromSheet();
+    }
+  }, [fetchRecordsFromSheet, scriptUrl]);
 
-  const handleUrlChange = (newUrl: string) => {
-    const cleanUrl = newUrl.trim();
+  const handleUrlChange = (url: string) => {
+    const cleanUrl = url.trim().replace(/\s/g, '');
     setScriptUrl(cleanUrl);
     localStorage.setItem('cntsci_script_url', cleanUrl);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
+    if (name === 'nomAgent') {
+      localStorage.setItem('cntsci_last_agent', value);
+    }
     setFormData(prev => ({
       ...prev,
-      [name]: name.startsWith('nb') ? (value === '' ? '' : Math.max(0, parseInt(value) || 0)) : value
+      [name]: name === 'nbPoches' ? (value === '' ? '' : Math.max(0, parseInt(value) || 0)) : value
     }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!scriptUrl) {
+      setShowSettings(true);
+      setShowToast('error');
+      return;
+    }
     setIsSubmitting(true);
+    
     const now = new Date();
     const finalData = {
       horodateur: now.toLocaleString('fr-FR'),
-      nomAgent: formData.nomAgent,
+      nomAgent: formData.nomAgent || 'Agent Anonyme',
       dateDistribution: formData.dateDistribution,
       centreCntsci: formData.centreCntsci,
-      nbCgrAdulte: formData.nbCgrAdulte || 0,
-      nbCgrPediatrique: formData.nbCgrPediatrique || 0,
-      nbPlasma: formData.nbPlasma || 0,
-      nbPlaquettes: formData.nbPlaquettes || 0,
-      nbStructuresSanitaire: formData.nbStructuresSanitaire || 0,
+      nomStructuresSanitaire: formData.nomStructuresSanitaire,
+      typeProduit: formData.typeProduit,
+      saGroupe: formData.saGroupe,
+      nbPoches: formData.nbPoches || 0,
     };
 
     const params = new URLSearchParams();
+    params.append('action', 'post_dist');
     Object.entries(finalData).forEach(([key, val]) => params.append(key, val.toString()));
 
     try {
-      const recordToSave: DistributionData = { ...finalData, id: now.getTime().toString() } as DistributionData;
-      setRecords(prev => [...prev, recordToSave]);
-
-      await fetch(scriptUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: params.toString(),
-      });
-
-      analyzeDistribution(recordToSave).then(setAiAnalysis);
+      await fetch(`${scriptUrl}?${params.toString()}`, { method: 'GET' });
       setShowToast('success');
       resetForm();
-      setTimeout(() => fetchRecordsFromSheet(false), 3000);
+      setTimeout(() => fetchRecordsFromSheet(false), 2000);
+      analyzeDistribution(finalData as any).then(setAiAnalysis);
     } catch (error) {
       setShowToast('error');
     } finally {
@@ -133,209 +126,195 @@ const App: React.FC = () => {
   const resetForm = () => {
     setFormData(prev => ({
       ...prev,
-      nomAgent: '', 
-      nbCgrAdulte: '',
-      nbCgrPediatrique: '',
-      nbPlasma: '',
-      nbPlaquettes: '',
-      nbStructuresSanitaire: '',
+      nbPoches: '',
     }));
     setAiAnalysis(null);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20 selection:bg-red-100">
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-15%] right-[-10%] w-[50%] h-[50%] bg-red-500/5 blur-[120px] rounded-full animate-pulse"></div>
-        <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-500/5 blur-[100px] rounded-full"></div>
-      </div>
-
-      <header className="sticky top-0 z-[100] px-4 pt-4 md:px-8 md:pt-6">
-        <div className="max-w-7xl mx-auto bg-slate-900/95 backdrop-blur-xl border border-white/10 p-4 rounded-[2.5rem] shadow-2xl shadow-slate-900/40 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-4 group">
-            <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-red-800 rounded-2xl flex items-center justify-center shadow-lg shadow-red-500/20 transform rotate-3 group-hover:rotate-0 transition-transform duration-500">
-              <i className="fa-solid fa-droplet text-white text-xl animate-pulse"></i>
+    <div className="min-h-screen bg-slate-50 pb-20">
+      <header className="sticky top-0 z-[100] px-4 pt-4 md:px-8">
+        <div className="max-w-7xl mx-auto bg-slate-900 p-4 rounded-[2rem] shadow-2xl flex justify-between items-center ring-1 ring-white/10">
+          <div className="flex items-center gap-4 pl-2">
+            <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-red-600/20">
+              <i className="fa-solid fa-chart-line"></i>
             </div>
-            <div>
-              <h1 className="text-xl font-black text-white uppercase tracking-tighter leading-none">
-                CNTSCI <span className="text-red-500">Flux</span>
-              </h1>
-              <div className="flex items-center gap-2 mt-1">
-                <div className={`w-2 h-2 rounded-full ${connError ? 'bg-amber-500' : 'bg-green-500 animate-pulse'}`}></div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                  {isSyncing ? 'Mise à jour...' : connError ? 'Erreur de lien' : 'Connecté'}
-                </span>
-              </div>
+            <div className="hidden sm:block">
+              <h1 className="text-white font-black text-sm uppercase tracking-tighter">CNTSCI <span className="text-red-500">Flux</span></h1>
+              <p className="text-[9px] font-bold text-slate-500 uppercase">Analytics Dashboard v12.0</p>
             </div>
           </div>
           
-          <div className="flex bg-white/5 p-1 rounded-[1.5rem] border border-white/5">
+          <div className="flex bg-white/5 p-1 rounded-2xl border border-white/5">
             <button 
               onClick={() => setActiveTab('form')} 
-              className={`px-8 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${activeTab === 'form' ? 'bg-white text-slate-900 shadow-xl scale-105' : 'text-slate-400 hover:text-white'}`}
+              className={`px-4 sm:px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'form' ? 'bg-white text-slate-900 shadow-xl' : 'text-slate-400 hover:text-white'}`}
             >
-              <i className="fa-solid fa-plus-circle mr-2"></i>Saisie
+              Saisie
             </button>
             <button 
               onClick={() => setActiveTab('recap')} 
-              className={`px-8 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${activeTab === 'recap' ? 'bg-white text-slate-900 shadow-xl scale-105' : 'text-slate-400 hover:text-white'}`}
+              className={`px-4 sm:px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'recap' ? 'bg-white text-slate-900 shadow-xl' : 'text-slate-400 hover:text-white'}`}
             >
-              <i className="fa-solid fa-chart-column mr-2"></i>RECAP
+              Dashboard
+            </button>
+            <button 
+              onClick={() => setActiveTab('weekly')} 
+              className={`px-4 sm:px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'weekly' ? 'bg-white text-slate-900 shadow-xl' : 'text-slate-400 hover:text-white'}`}
+            >
+              Semaine
             </button>
           </div>
 
           <div className="flex gap-2">
-            <button onClick={() => fetchRecordsFromSheet(true)} className="w-11 h-11 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center text-white hover:bg-white/10 transition-all active:scale-90">
-              <i className={`fa-solid fa-arrows-rotate ${isSyncing ? 'fa-spin' : ''}`}></i>
-            </button>
-            <button onClick={() => setShowSettings(!showSettings)} className={`w-11 h-11 border rounded-2xl flex items-center justify-center transition-all active:scale-90 ${showSettings ? 'bg-red-600 border-red-600 text-white shadow-lg shadow-red-500/20' : 'bg-white/5 border-white/10 text-white hover:bg-white/10'}`}>
+            <button onClick={() => setShowSettings(!showSettings)} className={`w-10 h-10 border rounded-xl flex items-center justify-center transition-all ${showSettings ? 'bg-red-600 border-red-600 text-white shadow-lg' : 'bg-white/5 border-white/10 text-white hover:bg-white/10'}`}>
               <i className="fa-solid fa-gear"></i>
             </button>
           </div>
         </div>
       </header>
 
-      {showSettings && (
-        <div className="max-w-7xl mx-auto px-4 mt-8 animate-in slide-in-from-top-4 duration-500">
-          <div className="bg-white rounded-[2.5rem] p-8 shadow-2xl border border-slate-200">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
-                <i className="fa-solid fa-link"></i>
-              </div>
-              <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Lien Google Script</h3>
-            </div>
-            <div className="flex flex-col md:flex-row gap-4">
-              <input 
-                type="text" 
-                className="flex-1 px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-xs font-mono outline-none focus:border-red-500 transition-all"
-                value={scriptUrl}
-                onChange={(e) => handleUrlChange(e.target.value)}
-                placeholder="https://script.google.com/..."
-              />
-              <button onClick={() => handleUrlChange(DEFAULT_SCRIPT_URL)} className="px-6 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg">
-                Rétablir défaut
-              </button>
-            </div>
-            {connError && <p className="mt-4 text-[10px] font-bold text-red-500 uppercase flex items-center gap-2"><i className="fa-solid fa-circle-exclamation"></i> Diagnostic: {connError}</p>}
-          </div>
-          <div className="mt-6"><ScriptInstruction /></div>
-        </div>
-      )}
-
       <main className="max-w-7xl mx-auto p-4 md:p-8">
-        {activeTab === 'form' ? (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
+        {showSettings && (
+          <div className="mb-8 bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-200 animate-in slide-in-from-top-4">
+             <div className="space-y-4 mb-6">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Endpoint Web App (/exec)</label>
+                <input type="text" className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-[10px] font-mono outline-none focus:border-red-500 transition-all" value={scriptUrl} onChange={(e) => handleUrlChange(e.target.value)} placeholder="https://script.google.com/..." />
+             </div>
+             <ScriptInstruction />
+          </div>
+        )}
+
+        <div className={activeTab === 'form' ? 'block' : 'hidden'}>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             <div className="lg:col-span-8">
-              <form onSubmit={handleSubmit} className="bg-white rounded-[3.5rem] shadow-2xl border border-slate-100 overflow-hidden hover:shadow-red-500/10 transition-shadow duration-700">
-                <div className="bg-slate-900 p-8 flex justify-between items-center">
-                  <div>
-                    <h2 className="text-white font-black uppercase tracking-[0.25em] text-xs">Formulaire de Sortie</h2>
-                    <p className="text-slate-500 text-[10px] font-bold mt-1">Validation immédiate cloud</p>
+              <form onSubmit={handleSubmit} className="bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden">
+                <div className="bg-slate-900 p-8 flex justify-between items-center text-white">
+                  <div className="flex items-center gap-3">
+                    <i className="fa-solid fa-pen-to-square text-red-500"></i>
+                    <h2 className="font-black uppercase tracking-widest text-xs">Mouvement Unitaire</h2>
                   </div>
-                  <button type="button" onClick={resetForm} className="text-slate-400 hover:text-white transition-colors text-xs p-2">
-                    <i className="fa-solid fa-trash-can"></i>
-                  </button>
+                  <button type="button" onClick={resetForm} className="text-slate-400 hover:text-white transition-colors text-xs"><i className="fa-solid fa-arrow-rotate-left"></i></button>
                 </div>
 
-                <div className="p-8 md:p-14 space-y-12">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                    <InputGroup label="Identité Agent" icon={<i className="fa-solid fa-id-badge text-red-500"></i>}>
-                      <input type="text" name="nomAgent" required placeholder="Ex: Jean Dupont" value={formData.nomAgent} onChange={handleInputChange} className="w-full px-8 py-5 bg-slate-50 border-2 border-slate-100 rounded-3xl font-bold text-slate-800 focus:border-red-500 focus:bg-white outline-none transition-all placeholder:text-slate-300" />
+                <div className="p-8 md:p-12 space-y-10">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <InputGroup label="Agent de Saisie" icon={<i className="fa-solid fa-user-edit text-red-500"></i>}>
+                      <input type="text" name="nomAgent" required placeholder="Votre nom" value={formData.nomAgent} onChange={handleInputChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-slate-800 focus:border-red-500 outline-none transition-all" />
                     </InputGroup>
                     <InputGroup label="Date Distribution" icon={<i className="fa-solid fa-calendar text-red-500"></i>}>
-                      <input type="date" name="dateDistribution" required value={formData.dateDistribution} onChange={handleInputChange} className="w-full px-8 py-5 bg-slate-50 border-2 border-slate-100 rounded-3xl font-bold text-slate-800 focus:border-red-500 focus:bg-white outline-none transition-all" />
+                      <input type="date" name="dateDistribution" required value={formData.dateDistribution} onChange={handleInputChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-slate-800 focus:border-red-500 outline-none transition-all" />
                     </InputGroup>
-                  </div>
-
-                  <InputGroup label="Centre Bénéficiaire" icon={<i className="fa-solid fa-building-shield text-red-500"></i>}>
-                    <div className="relative group/select">
-                      <select name="centreCntsci" value={formData.centreCntsci} onChange={handleInputChange} className="w-full px-8 py-5 bg-slate-50 border-2 border-slate-100 rounded-3xl font-black text-slate-900 appearance-none focus:border-red-500 focus:bg-white outline-none transition-all cursor-pointer">
+                    <InputGroup label="Centre CNTSCI" icon={<i className="fa-solid fa-hospital text-red-500"></i>}>
+                      <select name="centreCntsci" value={formData.centreCntsci} onChange={handleInputChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-slate-900 appearance-none focus:border-red-500 outline-none transition-all">
                         {CNTSCI_CENTERS.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
-                      <i className="fa-solid fa-chevron-down absolute right-8 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within/select:text-red-500 pointer-events-none transition-colors"></i>
-                    </div>
-                  </InputGroup>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                    <div className="p-8 bg-red-50/50 rounded-[3rem] border border-red-100 space-y-8">
-                      <span className="text-[10px] font-black uppercase tracking-[0.3em] text-red-600 block mb-2">Unités CGR</span>
-                      <div className="grid grid-cols-1 gap-6">
-                        <InputGroup label="Adulte">
-                          <input type="number" name="nbCgrAdulte" placeholder="0" value={formData.nbCgrAdulte} onChange={handleInputChange} className="w-full px-6 py-6 bg-white border-2 border-red-100 rounded-[2rem] text-center font-black text-5xl text-red-600 focus:border-red-500 outline-none transition-all shadow-sm" />
-                        </InputGroup>
-                        <InputGroup label="Pédiatrique">
-                          <input type="number" name="nbCgrPediatrique" placeholder="0" value={formData.nbCgrPediatrique} onChange={handleInputChange} className="w-full px-6 py-6 bg-white border-2 border-red-100 rounded-[2rem] text-center font-black text-5xl text-red-600 focus:border-red-500 outline-none transition-all shadow-sm" />
-                        </InputGroup>
-                      </div>
-                    </div>
-                    <div className="p-8 bg-blue-50/50 rounded-[3rem] border border-blue-100 space-y-8">
-                      <span className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-600 block mb-2">Unités PSL</span>
-                      <div className="grid grid-cols-1 gap-6">
-                        <InputGroup label="Plasma">
-                          <input type="number" name="nbPlasma" placeholder="0" value={formData.nbPlasma} onChange={handleInputChange} className="w-full px-6 py-6 bg-white border-2 border-blue-100 rounded-[2rem] text-center font-black text-5xl text-blue-600 focus:border-blue-500 outline-none transition-all shadow-sm" />
-                        </InputGroup>
-                        <InputGroup label="Plaquettes">
-                          <input type="number" name="nbPlaquettes" placeholder="0" value={formData.nbPlaquettes} onChange={handleInputChange} className="w-full px-6 py-6 bg-white border-2 border-blue-100 rounded-[2rem] text-center font-black text-5xl text-blue-600 focus:border-blue-500 outline-none transition-all shadow-sm" />
-                        </InputGroup>
-                      </div>
-                    </div>
+                    </InputGroup>
                   </div>
 
-                  <div className="bg-slate-50 p-10 rounded-[3rem] border border-slate-200">
-                    <InputGroup label="Structures Livrées" description="Total des établissements servis ce jour.">
-                      <input type="number" name="nbStructuresSanitaire" placeholder="0" value={formData.nbStructuresSanitaire} onChange={handleInputChange} className="w-full mt-4 px-8 py-8 bg-white border-2 border-slate-100 rounded-[2rem] font-black text-center text-6xl text-slate-800 focus:border-slate-400 outline-none transition-all shadow-inner" />
+                  <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-200">
+                    <InputGroup label="Structure Sanitaire Servie" icon={<i className="fa-solid fa-map-location text-red-500"></i>}>
+                      <input 
+                        list="structures-list"
+                        type="text" 
+                        name="nomStructuresSanitaire" 
+                        required 
+                        placeholder="Chercher l'établissement rattaché..." 
+                        value={formData.nomStructuresSanitaire} 
+                        onChange={handleInputChange} 
+                        className="w-full px-6 py-5 bg-white border-2 border-slate-100 rounded-2xl font-bold text-slate-800 focus:border-red-500 outline-none transition-all" 
+                      />
+                      <datalist id="structures-list">
+                        {structureSuggestions.map((s, idx) => (
+                          <option key={idx} value={s} />
+                        ))}
+                      </datalist>
                     </InputGroup>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="p-8 bg-slate-900 rounded-[2.5rem] shadow-xl space-y-8">
+                       <InputGroup label="Type de Produit" icon={<i className="fa-solid fa-vial text-red-500"></i>}>
+                          <select name="typeProduit" value={formData.typeProduit} onChange={handleInputChange} className="w-full px-6 py-4 bg-white/5 border-2 border-white/10 rounded-2xl font-black text-white appearance-none focus:border-red-500 outline-none transition-all">
+                            {PRODUCT_TYPES.map(p => <option key={p} value={p} className="text-slate-900">{p}</option>)}
+                          </select>
+                       </InputGroup>
+
+                       <InputGroup label="Groupe Sanguin (SA_GROUPE)" icon={<i className="fa-solid fa-dna text-red-500"></i>}>
+                          <div className="grid grid-cols-4 gap-2">
+                            {BLOOD_GROUPS.map(g => (
+                              <button 
+                                key={g} 
+                                type="button"
+                                onClick={() => setFormData({...formData, saGroupe: g})}
+                                className={`py-3 rounded-xl text-[10px] font-black transition-all border-2 ${formData.saGroupe === g ? 'bg-red-600 border-red-600 text-white' : 'bg-white/5 border-white/5 text-slate-400 hover:border-white/20'}`}
+                              >
+                                {g}
+                              </button>
+                            ))}
+                          </div>
+                       </InputGroup>
+                    </div>
+
+                    <div className="p-8 bg-red-50/50 rounded-[2.5rem] border border-red-100 flex flex-col justify-center items-center text-center space-y-6">
+                      <i className="fa-solid fa-cubes-stacked text-4xl text-red-200"></i>
+                      <InputGroup label="Quantité servie" description="Nombre exact d'unités pour ce produit/groupe.">
+                        <input 
+                          type="number" 
+                          name="nbPoches" 
+                          required
+                          placeholder="0" 
+                          value={formData.nbPoches} 
+                          onChange={handleInputChange} 
+                          className="w-full px-6 py-6 bg-white border-2 border-red-200 rounded-3xl text-center font-black text-5xl text-red-600 focus:border-red-500 outline-none transition-all shadow-inner" 
+                        />
+                      </InputGroup>
+                    </div>
                   </div>
 
                   {aiAnalysis && (
-                    <div className="p-8 bg-gradient-to-br from-slate-900 to-slate-800 rounded-[2.5rem] border border-white/10 flex gap-6 items-center animate-in zoom-in-95 duration-500">
-                      <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center text-red-500 text-xl shadow-lg shadow-black/20">
-                        <i className="fa-solid fa-robot"></i>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-[9px] font-black uppercase tracking-widest text-red-400 mb-1">Observation IA CNTSCI</p>
-                        <p className="text-sm font-medium text-slate-100 italic leading-snug">"{aiAnalysis}"</p>
-                      </div>
+                    <div className="p-6 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-3xl border border-indigo-100 flex gap-5 items-start animate-in zoom-in-95">
+                      <div className="w-10 h-10 rounded-full bg-white shadow-md flex items-center justify-center text-purple-600 shrink-0"><i className="fa-solid fa-wand-magic-sparkles"></i></div>
+                      <p className="text-sm font-medium text-slate-700 italic leading-snug">"{aiAnalysis}"</p>
                     </div>
                   )}
 
-                  <button 
-                    type="submit" 
-                    disabled={isSubmitting} 
-                    className="w-full group bg-slate-900 hover:bg-red-600 text-white font-black py-8 rounded-[2.5rem] shadow-2xl hover:shadow-red-500/20 transition-all duration-500 active:scale-[0.98] disabled:bg-slate-300 flex items-center justify-center gap-6 text-base uppercase tracking-[0.25em]"
-                  >
-                    {isSubmitting ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <i className="fa-solid fa-paper-plane group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform"></i>}
-                    {isSubmitting ? 'Finalisation...' : 'Valider la Distribution'}
+                  <button type="submit" disabled={isSubmitting} className="w-full group bg-slate-900 hover:bg-red-600 text-white font-black py-7 rounded-[2rem] shadow-2xl transition-all duration-500 active:scale-[0.98] disabled:bg-slate-300 flex items-center justify-center gap-4 text-sm uppercase tracking-widest">
+                    {isSubmitting ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <i className="fa-solid fa-check-to-slot"></i>}
+                    {isSubmitting ? 'Enregistrement...' : 'Valider la distribution'}
                   </button>
                 </div>
               </form>
             </div>
             
-            <div className="lg:col-span-4 lg:sticky lg:top-36">
+            <div className="lg:col-span-4 sticky top-32">
               <HistoryList records={records} />
             </div>
           </div>
-        ) : (
-          <RecapView records={records} lastSync={lastSync} onRefresh={() => fetchRecordsFromSheet(true)} isSyncing={isSyncing} />
-        )}
+        </div>
+
+        <div className={activeTab === 'recap' ? 'block' : 'hidden'}>
+          <RecapView 
+            records={records} 
+            lastSync={lastSync} 
+            onRefresh={() => fetchRecordsFromSheet(true)} 
+            isSyncing={isSyncing} 
+          />
+        </div>
+
+        <div className={activeTab === 'weekly' ? 'block' : 'hidden'}>
+          <WeeklyView 
+            records={records} 
+            onRefresh={() => fetchRecordsFromSheet(true)} 
+            isSyncing={isSyncing} 
+          />
+        </div>
       </main>
 
-      {showToast === 'success' && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-10 py-5 rounded-[2rem] shadow-2xl border border-white/10 flex items-center gap-5 z-[200] animate-in slide-in-from-bottom-12">
-          <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white text-lg">
-            <i className="fa-solid fa-check"></i>
-          </div>
-          <div>
-             <p className="text-[10px] font-black uppercase tracking-widest leading-none mb-1">Enregistrement OK</p>
-             <p className="text-[9px] font-bold text-slate-400 uppercase">Données transmises au cloud</p>
-          </div>
-        </div>
-      )}
-      
-      {showToast === 'sync' && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-10 py-5 rounded-[2rem] shadow-2xl border border-white/10 flex items-center gap-5 z-[200] animate-in slide-in-from-bottom-12">
-          <i className="fa-solid fa-arrows-rotate fa-spin text-blue-400 text-xl"></i>
-          <p className="text-[10px] font-black uppercase tracking-widest">Rafraîchissement global...</p>
+      {showToast && (
+        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-8 py-4 rounded-3xl shadow-2xl border border-white/10 flex items-center gap-4 z-[200] animate-in slide-in-from-bottom-10 ${showToast === 'success' ? 'bg-slate-900 text-white' : 'bg-red-600 text-white'}`}>
+          <i className={`fa-solid ${showToast === 'success' ? 'fa-check-circle text-green-400' : 'fa-triangle-exclamation'}`}></i>
+          <p className="text-[10px] font-black uppercase tracking-widest">{showToast === 'success' ? 'Mouvement synchronisé' : 'Erreur de configuration'}</p>
         </div>
       )}
     </div>

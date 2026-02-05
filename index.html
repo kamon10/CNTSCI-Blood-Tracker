@@ -11,7 +11,7 @@
     <style>
         body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
         #root:empty::after {
-            content: "Chargement de l'Analytics Dashboard...";
+            content: "Initialisation du Tracker CNTSCI...";
             display: flex;
             justify-content: center;
             align-items: center;
@@ -40,22 +40,20 @@
 <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@^19.2.4",
-    "react-dom": "https://esm.sh/react-dom@^19.2.4",
-    "react-dom/client": "https://esm.sh/react-dom@^19.2.4/client",
-    "react/": "https://esm.sh/react@^19.2.4/",
-    "@google/genai": "https://esm.sh/@google/genai@^1.39.0",
-    "chart.js/auto": "https://esm.sh/chart.js@^4.4.1/auto",
+    "react": "https://esm.sh/react@19.0.0",
+    "react-dom": "https://esm.sh/react-dom@19.0.0",
+    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
+    "@google/genai": "https://esm.sh/@google/genai@1.39.0",
+    "chart.js/auto": "https://esm.sh/chart.js@4.4.1/auto",
+    "chart.js/": "https://esm.sh/chart.js@^4.5.1/",
     "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
-    "chart.js/": "https://esm.sh/chart.js@^4.5.1/"
+    "react/": "https://esm.sh/react@^19.2.4/"
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
 </head>
 <body class="bg-slate-50 text-slate-900 overflow-x-hidden">
     <div id="root"></div>
     <script type="module" src="index.tsx"></script>
-<script type="module" src="/index.tsx"></script>
 </body>
 </html>

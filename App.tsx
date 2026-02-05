@@ -8,7 +8,6 @@ import ScriptInstruction from './components/ScriptInstruction';
 import RecapView from './components/RecapView';
 import { analyzeDistribution } from './services/geminiService';
 
-// Lien de production configuré par défaut
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxCUbBffPJ1l-NnPwEU48MFcGV4Uu8Jlg8chZhENyK0CeFcyq4dHIfZA0Y4ZrcI_Fc-0Q/exec";
 
 const App: React.FC = () => {
@@ -60,11 +59,8 @@ const App: React.FC = () => {
         throw new Error("Données JSON invalides reçues");
       }
     } catch (error: any) {
-      console.error("Diagnostic Connexion:", error);
-      const msg = error.message === "Failed to fetch" 
-        ? "Blocage Sécurité : Vérifiez que 'Tout le monde' est sélectionné dans Apps Script" 
-        : error.message;
-      setConnError(msg);
+      console.error("Connexion Error:", error);
+      setConnError(error.message === "Failed to fetch" ? "Serveur inaccessible" : error.message);
       if (showNotification) setShowToast('error');
     } finally {
       setIsSyncing(false);
@@ -73,11 +69,8 @@ const App: React.FC = () => {
   }, [scriptUrl, isSyncing]);
 
   useEffect(() => {
-    // Charger le cache immédiat au démarrage
     const saved = localStorage.getItem('cntsci_records');
     if (saved) setRecords(JSON.parse(saved));
-    
-    // Connexion automatique au démarrage avec l'URL par défaut
     if (scriptUrl) fetchRecordsFromSheet();
   }, [scriptUrl, fetchRecordsFromSheet]);
 
@@ -97,11 +90,6 @@ const App: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!scriptUrl) {
-      setShowSettings(true);
-      return;
-    }
-    
     setIsSubmitting(true);
     const now = new Date();
     const finalData = {
@@ -133,8 +121,7 @@ const App: React.FC = () => {
       analyzeDistribution(recordToSave).then(setAiAnalysis);
       setShowToast('success');
       resetForm();
-      
-      setTimeout(() => fetchRecordsFromSheet(false), 5000);
+      setTimeout(() => fetchRecordsFromSheet(false), 3000);
     } catch (error) {
       setShowToast('error');
     } finally {
@@ -163,180 +150,170 @@ const App: React.FC = () => {
   }, [centerSearch]);
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-10 font-sans text-slate-900 selection:bg-red-100">
-      <header className="bg-slate-900 text-white p-6 sticky top-0 z-50 shadow-2xl">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="flex items-center gap-5">
-            <div className="bg-gradient-to-br from-red-500 to-red-700 p-4 rounded-3xl shadow-lg shadow-red-900/40 transform -rotate-6">
-              <i className="fa-solid fa-droplet text-3xl animate-pulse"></i>
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20 selection:bg-red-100">
+      {/* Dynamic Background Accents */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-red-500/5 blur-[120px] rounded-full"></div>
+        <div className="absolute bottom-[-10%] left-[-10%] w-[30%] h-[40%] bg-blue-500/5 blur-[100px] rounded-full"></div>
+      </div>
+
+      <header className="sticky top-0 z-[100] px-4 pt-4 md:px-8 md:pt-6">
+        <div className="max-w-7xl mx-auto bg-slate-900/90 backdrop-blur-xl border border-white/10 p-4 md:p-5 rounded-[2.5rem] shadow-2xl shadow-slate-900/40 flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-red-800 rounded-2xl flex items-center justify-center shadow-lg shadow-red-500/20 transform rotate-3">
+              <i className="fa-solid fa-droplet text-white text-xl animate-pulse"></i>
             </div>
             <div>
-              <h1 className="text-2xl font-black uppercase tracking-tighter leading-none">CNTSCI <span className="text-red-500 italic">Distri</span></h1>
-              <div className="mt-1 flex items-center gap-3">
-                 <div className={`w-2 h-2 rounded-full ${connError ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]' : 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)] animate-pulse'}`}></div>
-                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                   {connError ? "ERREUR CONNEXION" : isSyncing ? "SYNC EN COURS..." : `PRÊT • ${lastSync || 'HORS-LIGNE'}`}
-                 </span>
+              <h1 className="text-xl font-black text-white uppercase tracking-tighter leading-none">
+                CNTSCI <span className="text-red-500">Flux</span>
+              </h1>
+              <div className="flex items-center gap-2 mt-1">
+                <div className={`w-2 h-2 rounded-full ${connError ? 'bg-amber-500' : 'bg-green-500 animate-pulse'}`}></div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  {isSyncing ? 'Synchronisation...' : connError ? 'Erreur de lien' : 'Connecté au cloud'}
+                </span>
               </div>
             </div>
           </div>
           
-          <div className="flex items-center gap-2 bg-white/5 p-2 rounded-[2rem] border border-white/10 backdrop-blur-md">
-            <button onClick={() => setActiveTab('form')} className={`px-8 py-3 rounded-full text-[10px] font-black uppercase transition-all flex items-center gap-2 ${activeTab === 'form' ? 'bg-white text-slate-900 shadow-xl scale-105' : 'text-slate-400 hover:text-white'}`}>
-              <i className="fa-solid fa-pen"></i> Saisie
+          <div className="flex bg-white/5 p-1.5 rounded-[1.5rem] border border-white/5">
+            <button onClick={() => setActiveTab('form')} className={`px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'form' ? 'bg-white text-slate-900 shadow-xl' : 'text-slate-400 hover:text-white'}`}>
+              <i className="fa-solid fa-plus-circle mr-2"></i>Saisie
             </button>
-            <button onClick={() => setActiveTab('recap')} className={`px-8 py-3 rounded-full text-[10px] font-black uppercase transition-all flex items-center gap-2 ${activeTab === 'recap' ? 'bg-white text-slate-900 shadow-xl scale-105' : 'text-slate-400 hover:text-white'}`}>
-              <i className="fa-solid fa-chart-line"></i> Rapports
+            <button onClick={() => setActiveTab('recap')} className={`px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'recap' ? 'bg-white text-slate-900 shadow-xl' : 'text-slate-400 hover:text-white'}`}>
+              <i className="fa-solid fa-chart-pie mr-2"></i>Analyse
             </button>
           </div>
 
-          <div className="flex gap-3">
-            <button onClick={() => fetchRecordsFromSheet(true)} className={`w-12 h-12 rounded-2xl border-2 transition-all flex items-center justify-center ${isSyncing ? 'bg-blue-600 border-blue-600' : 'border-white/20 hover:bg-white/10'}`} disabled={isSyncing}>
-              <i className={`fa-solid fa-sync ${isSyncing ? 'fa-spin' : ''}`}></i>
+          <div className="flex gap-2">
+            <button onClick={() => fetchRecordsFromSheet(true)} className="w-11 h-11 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center text-white hover:bg-white/10 transition-all active:scale-90">
+              <i className={`fa-solid fa-arrows-rotate ${isSyncing ? 'fa-spin' : ''}`}></i>
             </button>
-            <button onClick={() => setShowSettings(!showSettings)} className={`w-12 h-12 rounded-2xl border-2 transition-all flex items-center justify-center ${showSettings ? 'bg-red-600 border-red-600' : 'border-white/20 hover:bg-white/10'}`}>
-              <i className="fa-solid fa-sliders"></i>
+            <button onClick={() => setShowSettings(!showSettings)} className={`w-11 h-11 border rounded-2xl flex items-center justify-center transition-all active:scale-90 ${showSettings ? 'bg-red-600 border-red-600 text-white shadow-lg shadow-red-500/20' : 'bg-white/5 border-white/10 text-white hover:bg-white/10'}`}>
+              <i className="fa-solid fa-gear"></i>
             </button>
           </div>
         </div>
       </header>
 
       {showSettings && (
-        <div className="max-w-7xl mx-auto px-4 mt-8 space-y-8 animate-in slide-in-from-top-4 duration-500">
-          <div className="bg-white rounded-[3rem] p-10 shadow-2xl border-4 border-slate-100">
-             <div className="flex justify-between items-start mb-8">
-               <div>
-                  <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-3">
-                    <i className="fa-solid fa-plug text-blue-500"></i> Configuration du lien
-                  </h3>
-                  <p className="text-xs font-bold text-slate-400 mt-1">Lien actuel : {scriptUrl === DEFAULT_SCRIPT_URL ? 'Par défaut' : 'Personnalisé'}</p>
-               </div>
-               {connError && <span className="bg-red-50 text-red-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase border border-red-100">Erreur détectée</span>}
-             </div>
-             
-             <div className="space-y-6">
-                <div className="relative">
-                  <input type="text" placeholder="https://script.google.com/macros/s/.../exec" className={`w-full px-8 py-6 bg-slate-50 border-4 rounded-3xl font-mono text-sm outline-none transition-all ${connError ? 'border-red-100 focus:border-red-300' : 'border-slate-100 focus:border-blue-500'}`} value={scriptUrl} onChange={(e) => handleUrlChange(e.target.value)} />
-                  <div className="absolute right-6 top-1/2 -translate-y-1/2">
-                    {scriptUrl ? <i className="fa-solid fa-check-circle text-green-500 text-xl"></i> : <i className="fa-solid fa-circle-info text-slate-300 text-xl"></i>}
-                  </div>
-                </div>
-
-                {connError && (
-                  <div className="p-6 bg-red-50 rounded-3xl border-2 border-red-100 flex items-start gap-5">
-                    <i className="fa-solid fa-circle-exclamation text-2xl text-red-500 mt-1"></i>
-                    <div>
-                      <p className="text-sm font-black text-red-700 uppercase">Diagnostic technique :</p>
-                      <p className="text-sm text-red-900 font-bold italic">"{connError}"</p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex flex-wrap gap-4">
-                  <button onClick={() => fetchRecordsFromSheet(true)} className="bg-slate-900 text-white px-10 py-5 rounded-2xl font-black uppercase text-xs hover:scale-105 transition-all shadow-xl shadow-slate-900/20">Tester le lien</button>
-                  <button onClick={() => handleUrlChange(DEFAULT_SCRIPT_URL)} className="bg-white border-2 border-slate-200 text-slate-400 px-10 py-5 rounded-2xl font-black uppercase text-xs hover:text-slate-600 transition-all">Rétablir défaut</button>
-                </div>
-             </div>
+        <div className="max-w-7xl mx-auto px-4 mt-8 animate-in slide-in-from-top-4 duration-500">
+          <div className="bg-white rounded-[2.5rem] p-8 shadow-2xl border border-slate-200">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+                <i className="fa-solid fa-link"></i>
+              </div>
+              <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Lien Google Script</h3>
+            </div>
+            <div className="flex flex-col md:flex-row gap-4">
+              <input 
+                type="text" 
+                className="flex-1 px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-xs font-mono outline-none focus:border-red-500 transition-all"
+                value={scriptUrl}
+                onChange={(e) => handleUrlChange(e.target.value)}
+                placeholder="https://script.google.com/..."
+              />
+              <button onClick={() => handleUrlChange(DEFAULT_SCRIPT_URL)} className="px-6 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg">
+                Rétablir défaut
+              </button>
+            </div>
+            {connError && <p className="mt-4 text-[10px] font-bold text-red-500 uppercase flex items-center gap-2"><i className="fa-solid fa-circle-exclamation"></i> Diagnostic: {connError}</p>}
           </div>
-          <ScriptInstruction />
+          <div className="mt-6"><ScriptInstruction /></div>
         </div>
       )}
 
       <main className="max-w-7xl mx-auto p-4 md:p-8">
         {activeTab === 'form' ? (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-            <div className="lg:col-span-2 space-y-8">
-              <form onSubmit={handleSubmit} className="bg-white rounded-[3.5rem] shadow-2xl border border-slate-200 overflow-hidden">
-                <div className="p-8 bg-slate-900 text-white font-black uppercase text-xs tracking-[0.3em] flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
-                    Saisie Distribution
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            <div className="lg:col-span-8">
+              <form onSubmit={handleSubmit} className="bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden hover:shadow-red-500/5 transition-all duration-700">
+                <div className="bg-slate-900 p-8 flex justify-between items-center">
+                  <div>
+                    <h2 className="text-white font-black uppercase tracking-[0.2em] text-xs">Formulaire de Sortie</h2>
+                    <p className="text-slate-500 text-[10px] font-bold mt-1">Saisie en temps réel certifiée</p>
                   </div>
-                  <button type="button" onClick={resetForm} className="hover:text-red-400 transition-colors uppercase text-[10px]">
-                    <i className="fa-solid fa-trash-can mr-2"></i> Réinitialiser
+                  <button type="button" onClick={resetForm} className="text-slate-400 hover:text-white transition-colors text-xs">
+                    <i className="fa-solid fa-arrow-rotate-left"></i>
                   </button>
                 </div>
-                <div className="p-8 md:p-14 space-y-12">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                    <InputGroup label="Nom de l'agent" icon={ICONS.agent}>
-                      <input type="text" name="nomAgent" required placeholder="Votre nom complet" value={formData.nomAgent} onChange={handleInputChange} className="w-full px-6 py-5 border-4 border-slate-100 rounded-3xl outline-none focus:border-red-500 bg-slate-50 font-black text-xl placeholder:text-slate-300 transition-all" />
+
+                <div className="p-8 md:p-12 space-y-10">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <InputGroup label="Identité Agent" icon={<i className="fa-solid fa-id-badge text-red-500"></i>}>
+                      <input type="text" name="nomAgent" required placeholder="Ex: Jean Dupont" value={formData.nomAgent} onChange={handleInputChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-slate-800 focus:border-red-500 outline-none transition-all placeholder:text-slate-300" />
                     </InputGroup>
-                    <InputGroup label="Date" icon={ICONS.calendar}>
-                      <input type="date" name="dateDistribution" required value={formData.dateDistribution} onChange={handleInputChange} className="w-full px-6 py-5 border-4 border-slate-100 rounded-3xl outline-none focus:border-red-500 bg-slate-50 font-black text-xl transition-all" />
+                    <InputGroup label="Date Distribution" icon={<i className="fa-solid fa-calendar text-red-500"></i>}>
+                      <input type="date" name="dateDistribution" required value={formData.dateDistribution} onChange={handleInputChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-slate-800 focus:border-red-500 outline-none transition-all" />
                     </InputGroup>
                   </div>
 
-                  <InputGroup label="Centre de destination" icon={ICONS.center}>
-                    <div className="relative mb-4">
-                      <i className="fa-solid fa-search absolute left-6 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                      <input type="text" placeholder="Filtrer les centres..." className="w-full pl-14 pr-6 py-4 bg-slate-100 rounded-2xl text-xs font-bold outline-none focus:bg-white border-2 border-transparent focus:border-slate-200" value={centerSearch} onChange={(e) => setCenterSearch(e.target.value)} />
+                  <InputGroup label="Centre Bénéficiaire" icon={<i className="fa-solid fa-building-shield text-red-500"></i>}>
+                    <div className="relative">
+                      <select name="centreCntsci" value={formData.centreCntsci} onChange={handleInputChange} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-slate-900 appearance-none focus:border-red-500 outline-none transition-all">
+                        {CNTSCI_CENTERS.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <i className="fa-solid fa-chevron-down absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-[10px]"></i>
                     </div>
-                    <select name="centreCntsci" value={formData.centreCntsci} onChange={handleInputChange} className="w-full px-8 py-6 border-4 border-slate-100 rounded-3xl outline-none bg-white font-black text-slate-800 text-2xl appearance-none shadow-inner cursor-pointer hover:border-slate-200 transition-all">
-                      {filteredCenters.map(center => <option key={center} value={center}>{center}</option>)}
-                    </select>
                   </InputGroup>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                    <div className="space-y-8 bg-red-50/30 p-8 rounded-[3rem] border-2 border-red-50">
-                      <h3 className="text-[10px] font-black text-red-600 uppercase tracking-[0.3em] flex items-center gap-3">
-                        <i className="fa-solid fa-vial"></i> Globules Rouges (CGR)
-                      </h3>
-                      <div className="space-y-6">
-                        <InputGroup label="CGR ADULTE">
-                          <input type="number" name="nbCgrAdulte" placeholder="0" value={formData.nbCgrAdulte} onChange={handleInputChange} className="w-full px-6 py-8 border-4 border-white rounded-[2rem] text-center font-black text-6xl text-red-600 outline-none focus:border-red-500 bg-white shadow-xl" />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="p-6 bg-red-50/50 rounded-[2rem] border border-red-100 space-y-6">
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-red-600 block mb-2">Concentrés Globulaires (CGR)</span>
+                      <div className="grid grid-cols-2 gap-4">
+                        <InputGroup label="Adulte">
+                          <input type="number" name="nbCgrAdulte" placeholder="0" value={formData.nbCgrAdulte} onChange={handleInputChange} className="w-full px-4 py-5 bg-white border-2 border-red-100 rounded-2xl text-center font-black text-2xl text-red-600 focus:border-red-500 outline-none transition-all" />
                         </InputGroup>
-                        <InputGroup label="CGR PEDIATRIQUE">
-                          <input type="number" name="nbCgrPediatrique" placeholder="0" value={formData.nbCgrPediatrique} onChange={handleInputChange} className="w-full px-6 py-8 border-4 border-white rounded-[2rem] text-center font-black text-6xl text-red-600 outline-none focus:border-red-500 bg-white shadow-xl" />
+                        <InputGroup label="Péd.">
+                          <input type="number" name="nbCgrPediatrique" placeholder="0" value={formData.nbCgrPediatrique} onChange={handleInputChange} className="w-full px-4 py-5 bg-white border-2 border-red-100 rounded-2xl text-center font-black text-2xl text-red-600 focus:border-red-500 outline-none transition-all" />
                         </InputGroup>
                       </div>
                     </div>
-                    <div className="space-y-8 bg-blue-50/30 p-8 rounded-[3rem] border-2 border-blue-50">
-                      <h3 className="text-[10px] font-black text-blue-600 uppercase tracking-[0.3em] flex items-center gap-3">
-                        <i className="fa-solid fa-flask"></i> Plasma & Plaquettes
-                      </h3>
-                      <div className="space-y-6">
-                        <InputGroup label="PLASMA">
-                          <input type="number" name="nbPlasma" placeholder="0" value={formData.nbPlasma} onChange={handleInputChange} className="w-full px-6 py-8 border-4 border-white rounded-[2rem] text-center font-black text-6xl text-blue-600 outline-none focus:border-blue-500 bg-white shadow-xl" />
+                    <div className="p-6 bg-blue-50/50 rounded-[2rem] border border-blue-100 space-y-6">
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600 block mb-2">Produits Labiles (PSL)</span>
+                      <div className="grid grid-cols-2 gap-4">
+                        <InputGroup label="Plasma">
+                          <input type="number" name="nbPlasma" placeholder="0" value={formData.nbPlasma} onChange={handleInputChange} className="w-full px-4 py-5 bg-white border-2 border-blue-100 rounded-2xl text-center font-black text-2xl text-blue-600 focus:border-blue-500 outline-none transition-all" />
                         </InputGroup>
-                        <InputGroup label="PLAQUETTES">
-                          <input type="number" name="nbPlaquettes" placeholder="0" value={formData.nbPlaquettes} onChange={handleInputChange} className="w-full px-6 py-8 border-4 border-white rounded-[2rem] text-center font-black text-6xl text-blue-600 outline-none focus:border-blue-500 bg-white shadow-xl" />
+                        <InputGroup label="Plaquettes">
+                          <input type="number" name="nbPlaquettes" placeholder="0" value={formData.nbPlaquettes} onChange={handleInputChange} className="w-full px-4 py-5 bg-white border-2 border-blue-100 rounded-2xl text-center font-black text-2xl text-blue-600 focus:border-blue-500 outline-none transition-all" />
                         </InputGroup>
                       </div>
                     </div>
                   </div>
 
-                  <div className="bg-slate-900 p-10 rounded-[3.5rem] text-white shadow-2xl relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-125 transition-transform duration-700">
-                       <i className="fa-solid fa-truck-medical text-9xl"></i>
-                    </div>
-                    <InputGroup label="Établissements Livrés" description="Nombre total de structures sanitaires servies lors de ce trajet.">
-                      <input type="number" name="nbStructuresSanitaire" placeholder="0" value={formData.nbStructuresSanitaire} onChange={handleInputChange} className="w-full mt-6 px-6 py-10 bg-white/10 border-4 border-white/20 rounded-[2.5rem] text-center font-black text-7xl text-white outline-none focus:bg-white/20 focus:border-white/50 transition-all" />
+                  <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-200">
+                    <InputGroup label="Structures Sanitaires Servies" description="Nombre total d'établissements livrés lors de ce mouvement.">
+                      <input type="number" name="nbStructuresSanitaire" placeholder="0" value={formData.nbStructuresSanitaire} onChange={handleInputChange} className="w-full mt-4 px-6 py-4 bg-white border-2 border-slate-100 rounded-2xl font-black text-center text-3xl text-slate-800 focus:border-slate-400 outline-none transition-all" />
                     </InputGroup>
                   </div>
-                </div>
 
-                {aiAnalysis && (
-                  <div className="mx-8 mb-12 p-8 bg-gradient-to-r from-purple-50 to-blue-50 rounded-[3rem] border-4 border-white shadow-xl flex gap-8 items-center animate-in zoom-in-95 duration-700">
-                    <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center text-4xl shadow-lg shrink-0">
-                       {ICONS.ai}
+                  {aiAnalysis && (
+                    <div className="p-6 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-3xl border border-indigo-100 flex gap-5 items-start animate-in zoom-in-95 duration-500">
+                      <div className="w-10 h-10 rounded-full bg-white shadow-md flex items-center justify-center text-purple-600 shrink-0">
+                        <i className="fa-solid fa-wand-magic-sparkles"></i>
+                      </div>
+                      <div>
+                        <p className="text-[9px] font-black uppercase tracking-widest text-indigo-400 mb-1">Analyse IA</p>
+                        <p className="text-sm font-medium text-slate-700 italic leading-snug">"{aiAnalysis}"</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest mb-1">Analyse IA Temps Réel</p>
-                      <p className="text-lg text-slate-800 italic font-medium leading-tight">"{aiAnalysis}"</p>
-                    </div>
-                  </div>
-                )}
+                  )}
 
-                <div className="p-10 bg-slate-50 border-t-4 border-slate-100">
-                  <button type="submit" disabled={isSubmitting || !scriptUrl} className="group w-full bg-red-600 hover:bg-red-700 disabled:bg-slate-300 text-white font-black py-10 px-12 rounded-[2.5rem] shadow-2xl shadow-red-500/30 transition-all active:scale-95 flex items-center justify-center gap-8 text-3xl uppercase tracking-tighter">
-                    {isSubmitting ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <i className="fa-solid fa-cloud-arrow-up group-hover:translate-y-[-4px] transition-transform"></i>}
-                    {isSubmitting ? 'Envoi...' : 'Enregistrer'}
+                  <button 
+                    type="submit" 
+                    disabled={isSubmitting} 
+                    className="w-full group bg-slate-900 hover:bg-red-600 text-white font-black py-6 rounded-[2rem] shadow-xl hover:shadow-red-500/20 transition-all duration-500 active:scale-[0.98] disabled:bg-slate-300 flex items-center justify-center gap-4 text-sm uppercase tracking-[0.2em]"
+                  >
+                    {isSubmitting ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <i className="fa-solid fa-cloud-arrow-up group-hover:scale-125 transition-transform"></i>}
+                    {isSubmitting ? 'Traitement...' : 'Envoyer les données'}
                   </button>
                 </div>
               </form>
             </div>
-            <div className="space-y-10">
-               <HistoryList records={records} />
+            
+            <div className="lg:col-span-4 sticky top-32">
+              <HistoryList records={records} />
             </div>
           </div>
         ) : (
@@ -344,25 +321,20 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {showToast === 'sync' && (
-        <div className="fixed bottom-12 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-10 py-5 rounded-full shadow-2xl flex items-center gap-5 z-[100] animate-in slide-in-from-bottom-20 border border-white/10">
-          <i className="fa-solid fa-arrows-rotate fa-spin text-blue-400"></i>
-          <p className="font-black text-xs uppercase tracking-widest">Synchronisation en cours...</p>
-        </div>
-      )}
-      {showToast === 'error' && (
-        <div className="fixed bottom-12 left-1/2 -translate-x-1/2 bg-red-600 text-white px-10 py-5 rounded-full shadow-2xl flex items-center gap-5 z-[100] animate-in slide-in-from-bottom-20">
-          <i className="fa-solid fa-circle-exclamation"></i>
-          <p className="font-black text-xs uppercase tracking-widest">Échec de la connexion</p>
-        </div>
-      )}
+      {/* Modern Compact Toasts */}
       {showToast === 'success' && (
-        <div className="fixed bottom-12 left-1/2 -translate-x-1/2 bg-green-600 text-white px-12 py-6 rounded-3xl shadow-2xl flex items-center gap-6 z-[100] animate-in slide-in-from-bottom-20">
-          <i className="fa-solid fa-check-double text-2xl"></i>
-          <div>
-            <p className="font-black text-lg uppercase leading-none">Données transmises !</p>
-            <p className="text-[10px] opacity-80 font-bold uppercase mt-1">Le fichier Sheet a été mis à jour.</p>
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-8 py-4 rounded-3xl shadow-2xl border border-white/10 flex items-center gap-4 z-[200] animate-in slide-in-from-bottom-10 duration-500">
+          <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white">
+            <i className="fa-solid fa-check"></i>
           </div>
+          <p className="text-[10px] font-black uppercase tracking-widest">Données enregistrées avec succès</p>
+        </div>
+      )}
+      
+      {showToast === 'sync' && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-8 py-4 rounded-3xl shadow-2xl border border-white/10 flex items-center gap-4 z-[200] animate-in slide-in-from-bottom-10">
+          <i className="fa-solid fa-arrows-rotate fa-spin text-blue-400"></i>
+          <p className="text-[10px] font-black uppercase tracking-widest">Mise à jour Cloud...</p>
         </div>
       )}
     </div>

@@ -8,7 +8,6 @@ import CenterRecapView from './components/CenterRecapView.tsx';
 import ScriptInstruction from './components/ScriptInstruction.tsx';
 import { analyzeDistribution } from './services/geminiService.ts';
 
-// URL DÉFINITIVE FOURNIE
 const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbwmJkITojb2tBgE5O2d-HaA__-y9wdtQO57XI0cl_A7kqRdn-5jnmhDwJezMwc-4e9oSQ/exec";
 
 const App: React.FC = () => {
@@ -16,7 +15,6 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const isFetchingRef = useRef(false);
   
-  // Sécurisation de l'accès au localStorage
   const [scriptUrl, setScriptUrl] = useState<string>(() => {
     try {
       return localStorage.getItem('cntsci_script_url_v15') || DEFAULT_URL;
@@ -54,14 +52,12 @@ const App: React.FC = () => {
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [showToast, setShowToast] = useState<'success' | 'error' | 'sync' | 'auth_error' | 'url_saved' | 'auto_login' | null>(null);
 
-  // LOGIQUE D'AUTHENTIFICATION : Un agent est "Vrai" s'il n'est pas VISITEUR
   const isAgentAuthenticated = useMemo(() => {
     if (!currentUser) return false;
     const name = currentUser.nomAgent.toUpperCase();
     return name !== "VISITEUR" && name !== "AUCUN" && name !== "";
   }, [currentUser]);
 
-  // Synchronisation des infos agent dans le formulaire
   useEffect(() => {
     if (currentUser) {
       setFormData(prev => ({
@@ -86,14 +82,12 @@ const App: React.FC = () => {
     if (showNotification) setShowToast('sync');
     
     try {
-      // 1. Récupérer les distributions
       const distResponse = await fetch(`${cleanUrl}?action=get_dist&_t=${Date.now()}`);
       if (distResponse.ok) {
         const data = await distResponse.json();
         if (Array.isArray(data)) setRecords(data);
       }
 
-      // 2. Auto-connexion VISITEUR si rien en mémoire
       if (!localStorage.getItem('cntsci_user_session')) {
         const userResponse = await fetch(`${cleanUrl}?action=get_users&_t=${Date.now()}`);
         if (userResponse.ok) {
@@ -135,7 +129,7 @@ const App: React.FC = () => {
         setCurrentUser(found);
         localStorage.setItem('cntsci_user_session', JSON.stringify(found));
         setShowToast('success');
-        setActiveTab('form'); // Redirige vers le formulaire de saisie une fois connecté
+        setActiveTab('form');
       } else {
         setShowToast('auth_error');
       }
@@ -219,7 +213,6 @@ const App: React.FC = () => {
             </div>
           </div>
           
-          {/* NAVIGATION PRINCIPALE - ONGLET RESTREINTS SI VISITEUR */}
           <div className="flex bg-white/5 p-1 rounded-2xl border border-white/5">
             <button onClick={() => setActiveTab('recap')} className={`px-4 sm:px-6 py-2.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'recap' ? 'bg-white text-slate-900 shadow-xl' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
               <i className="fa-solid fa-chart-pie mr-2"></i> Recap
@@ -237,7 +230,6 @@ const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* BOUTON CONNECTER AGENT POUR LES VISITEURS */}
             {!isAgentAuthenticated && (
               <button 
                 onClick={() => setActiveTab('form')}
@@ -268,15 +260,14 @@ const App: React.FC = () => {
           </div>
         </div>
         
-        {/* Mobile Connect Button for Visitors */}
         {!isAgentAuthenticated && (
-          <div className="md:hidden mt-4">
+          <div className="md:hidden mt-4 px-2">
             <button 
               onClick={() => setActiveTab('form')}
-              className="w-full flex items-center justify-center gap-3 bg-red-600 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-red-600/20"
+              className="w-full flex items-center justify-center gap-3 bg-red-600 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-red-600/20 active:scale-95 transition-all"
             >
               <i className="fa-solid fa-user-shield"></i>
-              Connecter un compte Agent
+              Connecter Agent
             </button>
           </div>
         )}
@@ -306,7 +297,6 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* VUE RECAPITULATIVE */}
         {activeTab === 'recap' && (
           <RecapView 
             records={records} 
@@ -316,7 +306,6 @@ const App: React.FC = () => {
           />
         )}
 
-        {/* VUE CENTRE - VERROUILLÉE POUR VISITEURS */}
         {activeTab === 'center' && (
           isAgentAuthenticated ? (
             <CenterRecapView 
@@ -344,12 +333,10 @@ const App: React.FC = () => {
           )
         )}
 
-        {/* VUE FORMULAIRE OU CONNEXION */}
         {activeTab === 'form' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
             <div className="lg:col-span-7">
               {!isAgentAuthenticated ? (
-                /* FORMULAIRE DE CONNEXION POUR LES VISITEURS */
                 <div className="bg-white p-12 rounded-[3rem] shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-500">
                   <div className="mb-10 text-center">
                     <div className="w-20 h-20 bg-slate-50 rounded-[2rem] flex items-center justify-center text-slate-300 text-3xl mx-auto mb-6 shadow-inner">
@@ -391,7 +378,6 @@ const App: React.FC = () => {
                   </form>
                 </div>
               ) : (
-                /* FORMULAIRE DE SAISIE POUR LES AGENTS */
                 <div className="bg-white p-10 rounded-[3rem] shadow-2xl border border-slate-100">
                   <div className="flex items-center justify-between mb-10">
                     <h2 className="text-xs font-black uppercase tracking-widest text-slate-800 flex items-center gap-3">
@@ -464,7 +450,6 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* TOAST NOTIFICATIONS */}
       {showToast && (
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] animate-in slide-in-from-bottom-10 duration-500">
           <div className={`px-8 py-4 rounded-full shadow-2xl border flex items-center gap-4 ${

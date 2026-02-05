@@ -1,0 +1,2 @@
+# CNTSCI-Blood-Tracker
+Une application professionnelle pour le suivi et la saisie de la distribution des produits sanguins (CGR, Plasma, Plaquettes) pour les centres CNTSCI.

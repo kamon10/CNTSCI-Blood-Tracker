@@ -7,9 +7,10 @@ interface RecapViewProps {
   lastSync?: string | null;
   onRefresh?: () => void;
   isSyncing?: boolean;
+  isAuthenticated?: boolean;
 }
 
-const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing }) => {
+const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, isAuthenticated }) => {
   const [selectedDay, setSelectedDay] = useState<string>('TOUS');
   const [selectedMonth, setSelectedMonth] = useState((new Date().getMonth() + 1).toString().padStart(2, '0'));
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
@@ -23,7 +24,6 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing }) 
 
   const days = Array.from({ length: 31 }, (_, i) => (i + 1).toString().padStart(2, '0'));
 
-  // Logic pour extraire jour/mois/année d'une date ISO ou FR
   const parseDate = (d: any) => {
     const s = String(d);
     if (s.includes('-')) {
@@ -36,7 +36,6 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing }) 
     return { d: '', m: '', y: '' };
   };
 
-  // Filtrage des données
   const filteredAnnual = useMemo(() => records.filter(r => parseDate(r.dateDistribution).y === selectedYear), [records, selectedYear]);
   const filteredMonthly = useMemo(() => filteredAnnual.filter(r => parseDate(r.dateDistribution).m === selectedMonth && (selectedSite === 'TOUS LES SITES' || r.centreCntsci === selectedSite)), [filteredAnnual, selectedMonth, selectedSite]);
   const filteredDaily = useMemo(() => {
@@ -44,7 +43,6 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing }) 
     return filteredMonthly.filter(r => parseDate(r.dateDistribution).d === selectedDay);
   }, [filteredMonthly, selectedDay]);
 
-  // Calcul des stats
   const getStats = (data: DistributionData[]) => {
     const s = { total: 0, cgrAdulte: 0, cgrPedia: 0, plasma: 0, plaquettes: 0, structures: new Set() };
     data.forEach(r => {
@@ -64,7 +62,6 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing }) 
   const monthlyStats = getStats(filteredMonthly);
   const dailyStats = getStats(filteredDaily);
 
-  // Groupement des données pour le Registre Matriciel
   const matrixData = useMemo(() => {
     const tree: any = {};
     filteredDaily.forEach(r => {
@@ -90,22 +87,31 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing }) 
 
   return (
     <div className="space-y-12 animate-in fade-in duration-700 pb-20">
-      {/* FILTRES HAUT DE PAGE */}
-      <div className="bg-white p-6 rounded-[2.5rem] shadow-2xl flex flex-wrap items-center gap-6 border border-slate-100 sticky top-28 z-40">
+      {/* FILTRES HAUT DE PAGE - GRISE SI NON AUTHENTIFIE */}
+      <div className={`bg-white p-6 rounded-[2.5rem] shadow-2xl flex flex-wrap items-center gap-6 border border-slate-100 sticky top-28 z-40 transition-all duration-500 ${!isAuthenticated ? 'opacity-60 grayscale-[0.8] pointer-events-none select-none' : ''}`}>
+        
+        {!isAuthenticated && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
+            <span className="bg-slate-900/90 text-white text-[8px] font-black uppercase tracking-[0.2em] px-4 py-2 rounded-full shadow-2xl backdrop-blur-sm border border-white/10">
+              <i className="fa-solid fa-lock mr-2 text-red-500"></i> Accès restreint : Identifiez-vous pour filtrer
+            </span>
+          </div>
+        )}
+
         <div className="flex bg-slate-50 p-1.5 rounded-2xl border border-slate-200">
            <div className="flex items-center gap-2 px-4 py-2 border-r border-slate-200">
              <i className="fa-solid fa-calendar-day text-blue-600 text-sm"></i>
-             <select value={selectedDay} onChange={e => setSelectedDay(e.target.value)} className="bg-transparent font-black text-xs uppercase outline-none">
+             <select disabled={!isAuthenticated} value={selectedDay} onChange={e => setSelectedDay(e.target.value)} className="bg-transparent font-black text-xs uppercase outline-none cursor-pointer disabled:cursor-not-allowed">
                 <option value="TOUS">JOUR</option>
                 {days.map(d => <option key={d} value={d}>{d}</option>)}
              </select>
            </div>
            <div className="flex items-center gap-2 px-4 py-2 border-r border-slate-200">
-             <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-transparent font-black text-xs uppercase outline-none">
+             <select disabled={!isAuthenticated} value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-transparent font-black text-xs uppercase outline-none cursor-pointer disabled:cursor-not-allowed">
                 {months.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
              </select>
            </div>
-           <select value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className="bg-transparent px-4 py-2 font-black text-xs uppercase outline-none">
+           <select disabled={!isAuthenticated} value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className="bg-transparent px-4 py-2 font-black text-xs uppercase outline-none cursor-pointer disabled:cursor-not-allowed">
               <option value="2024">2024</option>
               <option value="2025">2025</option>
               <option value="2026">2026</option>
@@ -114,13 +120,21 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing }) 
 
         <div className="flex-1 flex items-center gap-3 bg-slate-50 px-5 py-3 rounded-2xl border border-slate-200">
           <i className="fa-solid fa-map-pin text-red-500"></i>
-          <select value={selectedSite} onChange={e => setSelectedSite(e.target.value)} className="w-full bg-transparent font-black text-xs uppercase outline-none">
+          <select disabled={!isAuthenticated} value={selectedSite} onChange={e => setSelectedSite(e.target.value)} className="w-full bg-transparent font-black text-xs uppercase outline-none cursor-pointer disabled:cursor-not-allowed">
             <option value="TOUS LES SITES">TOUS LES CENTRES CNTSCI</option>
             {CNTSCI_CENTERS.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
 
-        <button onClick={onRefresh} disabled={isSyncing} className="bg-slate-900 text-white px-8 py-3.5 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-red-600 transition-all flex items-center gap-3">
+        <button 
+          onClick={onRefresh} 
+          disabled={isSyncing || !isAuthenticated} 
+          className={`px-8 py-3.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-3 shadow-lg ${
+            !isAuthenticated 
+            ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
+            : 'bg-slate-900 text-white hover:bg-red-600 shadow-slate-900/20 active:scale-95'
+          }`}
+        >
           <i className={`fa-solid fa-rotate ${isSyncing ? 'fa-spin' : ''}`}></i>
           {isSyncing ? 'Chargement...' : 'Rafraîchir'}
         </button>

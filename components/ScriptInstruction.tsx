@@ -4,96 +4,121 @@ import { ICONS } from '../constants';
 
 const ScriptInstruction: React.FC = () => {
   const code = `/**
- * SCRIPT COMPLET POUR GOOGLE SHEETS (BASE DIST)
- * Copiez-collez ce code pour remplacer l'intégralité de votre script actuel.
+ * SCRIPT DE SYNCHRONISATION (BASE DIST)
+ * Remplacez tout le contenu de l'éditeur Apps Script par ce code.
  */
 
-const SUPERVISORS = ["votre-email@gmail.com", "kadioamon@gmail.com"];
-const SHEET_NAME = "BASE DIST";
+const SHEET_NAME = "BASE DIST"; // Nom de l'onglet dans votre Sheet
 
-/**
- * RÉCEPTION DES DONNÉES DE L'APPLICATION
- * Cette fonction est appelée par l'application pour enregistrer une ligne.
- */
 function doPost(e) {
+  const lock = LockService.getScriptLock();
+  lock.tryLock(10000); // Évite les conflits d'écriture simultanée
+  
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName(SHEET_NAME) || ss.getSheets()[0];
-    const data = JSON.parse(e.postData.contents);
+    let sheet = ss.getSheetByName(SHEET_NAME);
     
-    // Ordre des 9 colonnes demandé
+    // Si l'onglet n'existe pas, on le crée avec les en-têtes
+    if (!sheet) {
+      sheet = ss.insertSheet(SHEET_NAME);
+      sheet.appendRow([
+        "Horodateur", "Nom de l'agent", "Date de distribution", 
+        "Centre CNTSCI", "Nombre de CGR ADULTE", "Nombre de CGR PEDIATRIQUE", 
+        "Nombre de PLASMA", "Nombre PLAQUETTES", "Nombre Structures Sanitaire"
+      ]);
+    }
+
+    // Récupération sécurisée des données
+    const contents = e.postData.contents;
+    const data = JSON.parse(contents);
+    
+    // Ajout de la ligne (9 colonnes respectées)
     sheet.appendRow([
-      data.horodateur,            // 1. Horodateur
-      data.nomAgent,             // 2. Nom de l'agent
-      data.dateDistribution,     // 3. Date de distribution
-      data.centreCntsci,         // 4. Centre CNTSCI
-      data.nbCgrAdulte,          // 5. Nombre de CGR ADULTE
-      data.nbCgrPediatrique,     // 6. Nombre de CGR PEDIATRIQUE
-      data.nbPlasma,             // 7. Nombre de PLASMA
-      data.nbPlaquettes,         // 8. Nombre PLAQUETTES
-      data.nbStructuresSanitaire // 9. Nombre Structures Sanitaire
+      data.horodateur || new Date().toLocaleString(),
+      data.nomAgent || "N/A",
+      data.dateDistribution || "",
+      data.centreCntsci || "",
+      data.nbCgrAdulte || 0,
+      data.nbCgrPediatrique || 0,
+      data.nbPlasma || 0,
+      data.nbPlaquettes || 0,
+      data.nbStructuresSanitaire || 0
     ]);
     
     return ContentService.createTextOutput(JSON.stringify({result: 'success'}))
       .setMimeType(ContentService.MimeType.JSON);
+      
   } catch (err) {
     return ContentService.createTextOutput(JSON.stringify({result: 'error', error: err.toString()}))
       .setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    lock.releaseLock();
   }
 }
 
-/**
- * MENU DE SUPERVISION
- */
 function onOpen() {
-  const ui = SpreadsheetApp.getUi();
-  ui.createMenu('⚡ Gestion Superviseur')
-      .addItem('✅ Valider la ligne (Vert)', 'approveRow')
-      .addItem('❌ Rejeter/Effacer la ligne', 'clearRow')
+  SpreadsheetApp.getUi().createMenu('⚡ CNTSCI')
+      .addItem('Mettre en forme le tableau', 'formatSheet')
       .addToUi();
 }
 
-function approveRow() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  const range = sheet.getActiveRange();
-  const row = range.getRow();
-  if (row < 2) return;
-  sheet.getRange(row, 1, 1, sheet.getLastColumn()).setBackground("#d9ead3");
-  SpreadsheetApp.getActiveSpreadsheet().toast("Ligne validée.");
-}
-
-function clearRow() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  const row = sheet.getActiveRange().getRow();
-  if (row < 2) return;
-  const ui = SpreadsheetApp.getUi();
-  if (ui.alert('Confirmation', 'Supprimer cette ligne ?', ui.ButtonSet.YES_NO) == ui.Button.YES) {
-    sheet.deleteRow(row);
-  }
+function formatSheet() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  if (!sheet) return;
+  sheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#f3f3f3");
+  sheet.setFrozenRows(1);
 }`;
 
   return (
-    <div className="space-y-4">
-      <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex gap-3">
-        <span className="text-amber-600 text-lg">{ICONS.warning}</span>
-        <div className="text-xs text-amber-900 leading-relaxed">
-          <p className="font-bold mb-1">Action Requise :</p>
-          Vous devez copier ce code dans votre éditeur Apps Script et effectuer un <b>"Nouveau déploiement"</b> de type <b>"Application Web"</b> accessible à <b>"Tout le monde"</b>.
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-blue-50 border border-blue-200 p-5 rounded-2xl">
+          <h4 className="font-black text-blue-700 text-xs uppercase mb-4 flex items-center gap-2">
+            <i className="fa-solid fa-list-check"></i> Checklist Déploiement
+          </h4>
+          <ul className="space-y-3 text-[11px] text-blue-900 font-medium">
+            <li className="flex gap-2">
+              <span className="bg-blue-200 text-blue-700 w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0">1</span>
+              <span>Cliquez sur <b>Déployer</b> {">"} <b>Nouveau déploiement</b>.</span>
+            </li>
+            <li className="flex gap-2">
+              <span className="bg-blue-200 text-blue-700 w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0">2</span>
+              <span>Type : Sélectionnez <b>Application Web</b>.</span>
+            </li>
+            <li className="flex gap-2">
+              <span className="bg-blue-200 text-blue-700 w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0">3</span>
+              <span>Qui a accès : Choisissez impérativement <b>"Tout le monde"</b> (Anyone).</span>
+            </li>
+            <li className="flex gap-2">
+              <span className="bg-blue-200 text-blue-700 w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0">4</span>
+              <span>Copiez l'URL finale (finit par <code>/exec</code>) et collez-la ci-dessus.</span>
+            </li>
+          </ul>
+        </div>
+        
+        <div className="bg-amber-50 border border-amber-200 p-5 rounded-2xl">
+          <h4 className="font-black text-amber-700 text-xs uppercase mb-4 flex items-center gap-2">
+             {ICONS.warning} Attention
+          </h4>
+          <p className="text-[11px] text-amber-900 leading-relaxed font-medium">
+            Si vous modifiez le code du script plus tard, vous <b>devez</b> créer un <b>Nouveau Déploiement</b> (ou mettre à jour la version) pour que les changements soient pris en compte par l'application. L'URL de test finissant par <code>/dev</code> ne fonctionnera pas ici.
+          </p>
         </div>
       </div>
-      <div className="bg-slate-900 text-slate-300 p-5 rounded-2xl text-[10px] font-mono overflow-x-auto border border-slate-700 shadow-inner">
+
+      <div className="bg-slate-900 text-slate-300 p-5 rounded-2xl text-[10px] font-mono overflow-x-auto border border-slate-700 shadow-2xl">
         <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-3">
-          <span className="flex items-center gap-2 text-slate-400">
-            {ICONS.code} Script complet (doPost + Menus)
+          <span className="flex items-center gap-2 text-slate-400 font-bold uppercase tracking-tighter">
+            {ICONS.code} Code du Script (BASE DIST)
           </span>
           <button 
             onClick={() => navigator.clipboard.writeText(code)}
-            className="hover:text-white transition-colors bg-white/10 px-3 py-1.5 rounded-lg border border-white/10"
+            className="hover:text-white transition-all bg-white/5 hover:bg-white/15 px-4 py-2 rounded-xl border border-white/10 flex items-center gap-2"
           >
-            Copier le code
+            <i className="fa-solid fa-copy"></i> Copier
           </button>
         </div>
-        <pre>{code}</pre>
+        <pre className="leading-relaxed">{code}</pre>
       </div>
     </div>
   );

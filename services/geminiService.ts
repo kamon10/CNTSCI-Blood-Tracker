@@ -2,22 +2,26 @@
 import { GoogleGenAI } from "@google/genai";
 import { DistributionData } from "../types.ts";
 
-// Sécurisation de l'accès à l'API KEY pour éviter les erreurs ReferenceError: process is not defined
+// Accès sécurisé à la clé API pour éviter "process is not defined"
 const getApiKey = () => {
   try {
-    return process.env.API_KEY || "";
+    // @ts-ignore
+    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+      // @ts-ignore
+      return process.env.API_KEY;
+    }
+    return "";
   } catch (e) {
     return "";
   }
 };
-
-const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
 export const analyzeDistribution = async (data: DistributionData) => {
   const apiKey = getApiKey();
   if (!apiKey) return "Analyse indisponible (Clé API manquante).";
 
   try {
+    const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `Analyse cette saisie de distribution de sang unitaire pour le CNTSCI. 

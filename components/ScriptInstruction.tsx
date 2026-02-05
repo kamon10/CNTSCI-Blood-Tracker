@@ -95,7 +95,7 @@ function setup() {
           <div className="space-y-4">
             <div className="flex gap-4">
               <div className="w-8 h-8 rounded-full bg-amber-600 text-white flex items-center justify-center font-black shrink-0">1</div>
-              <p className="text-xs font-bold text-amber-900">Cliquez sur <b>Déployer > Nouveau déploiement</b></p>
+              <p className="text-xs font-bold text-amber-900">Cliquez sur <b>Déployer &gt; Nouveau déploiement</b></p>
             </div>
             <div className="flex gap-4">
               <div className="w-8 h-8 rounded-full bg-amber-600 text-white flex items-center justify-center font-black shrink-0">2</div>

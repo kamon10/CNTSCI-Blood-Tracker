@@ -8,6 +8,18 @@ interface HistoryListProps {
 }
 
 const HistoryList: React.FC<HistoryListProps> = ({ records }) => {
+  const formatDateFr = (dateStr: string) => {
+    if (!dateStr) return '--/--/----';
+    const parts = dateStr.includes('-') ? dateStr.split('-') : dateStr.split('/');
+    if (parts.length === 3) {
+      if (parts[0].length === 4) { // YYYY-MM-DD
+        return `${parts[2].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[0]}`;
+      }
+      return `${parts[0].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[2]}`;
+    }
+    return dateStr;
+  };
+
   if (records.length === 0) {
     return (
       <div className="bg-white rounded-xl shadow-sm p-8 text-center border border-dashed border-slate-300">
@@ -38,12 +50,12 @@ const HistoryList: React.FC<HistoryListProps> = ({ records }) => {
               </div>
               <div className="flex flex-col text-right">
                 <span className="text-slate-400 text-[10px] uppercase">Date Dist.</span>
-                <span className="font-medium">{record.dateDistribution}</span>
+                <span className="font-medium">{formatDateFr(record.dateDistribution)}</span>
               </div>
             </div>
             <div className="mt-3 pt-3 border-t border-slate-50 flex flex-wrap gap-3">
-              <span className="text-xs bg-slate-50 px-2 py-1 rounded">CGR: {record.nbCgrAdulte + record.nbCgrPediatrique}</span>
-              <span className="text-xs bg-slate-50 px-2 py-1 rounded">PSL: {record.nbPlasma + record.nbPlaquettes}</span>
+              <span className="text-xs bg-slate-50 px-2 py-1 rounded">CGR: {Number(record.nbCgrAdulte) + Number(record.nbCgrPediatrique)}</span>
+              <span className="text-xs bg-slate-50 px-2 py-1 rounded">PSL: {Number(record.nbPlasma) + Number(record.nbPlaquettes)}</span>
               <span className="text-xs bg-slate-50 px-2 py-1 rounded">Struct: {record.nbStructuresSanitaire}</span>
             </div>
           </div>

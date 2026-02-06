@@ -9,6 +9,7 @@ import ScriptInstruction from './components/ScriptInstruction.tsx';
 import { analyzeDistribution } from './services/geminiService.ts';
 
 const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbwmJkITojb2tBgE5O2d-HaA__-y9wdtQO57XI0cl_A7kqRdn-5jnmhDwJezMwc-4e9oSQ/exec";
+const SUPER_CENTER_VALUE = "TOUS LES CENTRES CNTSCI";
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'form' | 'recap' | 'center'>('recap');
@@ -59,15 +60,22 @@ const App: React.FC = () => {
     return name !== "VISITEUR" && name !== "AUCUN" && name !== "";
   }, [currentUser]);
 
+  // Vérifie si l'utilisateur a les droits sur tous les centres
+  const isSuperAgent = useMemo(() => {
+    return currentUser?.centreAffectation === SUPER_CENTER_VALUE;
+  }, [currentUser]);
+
   useEffect(() => {
     if (currentUser) {
       setFormData(prev => ({
         ...prev,
         nomAgent: currentUser.nomAgent,
-        centreCntsci: currentUser.centreAffectation
+        // Si super agent, on initialise avec le premier centre de la liste s'il n'est pas déjà valide
+        centreCntsci: isSuperAgent ? CNTSCI_CENTERS[0] : currentUser.centreAffectation,
+        nomStructuresSanitaire: '' // Reset structure on user change
       }));
     }
-  }, [currentUser]);
+  }, [currentUser, isSuperAgent]);
 
   const structureSuggestions = useMemo(() => {
     return CENTER_STRUCTURES_MAP[formData.centreCntsci] || [];
@@ -162,10 +170,14 @@ const App: React.FC = () => {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: name === 'nbPoches' ? (value === '' ? '' : Math.max(0, parseInt(value) || 0)) : value
-    }));
+    setFormData(prev => {
+      const newData = { ...prev, [name]: name === 'nbPoches' ? (value === '' ? '' : Math.max(0, parseInt(value) || 0)) : value };
+      // Si on change le centre, on réinitialise la structure
+      if (name === 'centreCntsci') {
+        newData.nomStructuresSanitaire = '';
+      }
+      return newData;
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -307,6 +319,7 @@ const App: React.FC = () => {
             onRefresh={() => fetchRecordsAndAutoLogin(true)} 
             isSyncing={isSyncing}
             isAuthenticated={isAgentAuthenticated}
+            currentUser={currentUser}
           />
         )}
 
@@ -387,9 +400,16 @@ const App: React.FC = () => {
                     <h2 className="text-xs font-black uppercase tracking-widest text-slate-800 flex items-center gap-3">
                       <i className="fa-solid fa-pen-to-square text-red-600"></i> Nouvelle Distribution
                     </h2>
-                    <span className="text-[8px] font-black bg-red-50 text-red-600 px-3 py-1 rounded-full border border-red-100 uppercase">
-                      {currentUser?.centreAffectation}
-                    </span>
+                    <div className="flex flex-col items-end">
+                      <span className="text-[8px] font-black bg-red-50 text-red-600 px-3 py-1 rounded-full border border-red-100 uppercase mb-1">
+                        Profil: {currentUser?.centreAffectation}
+                      </span>
+                      {!isSuperAgent && (
+                         <span className="text-[10px] font-black text-slate-400 uppercase">
+                           Centre: {formData.centreCntsci}
+                         </span>
+                      )}
+                    </div>
                   </div>
 
                   <form onSubmit={handleSubmit} className="space-y-8">
@@ -398,6 +418,15 @@ const App: React.FC = () => {
                         <input name="dateDistribution" type="date" value={formData.dateDistribution} onChange={handleInputChange} className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-xs font-bold focus:border-red-600 outline-none transition-all" />
                       </InputGroup>
                       
+                      {/* Affichage conditionnel du sélecteur de centre pour les Super Agents */}
+                      {isSuperAgent ? (
+                        <InputGroup label="Sélectionner le Centre" icon={<i className="fa-solid fa-building-shield"></i>}>
+                          <select name="centreCntsci" value={formData.centreCntsci} onChange={handleInputChange} className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-xs font-bold focus:border-red-600 outline-none transition-all" required>
+                            {CNTSCI_CENTERS.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </InputGroup>
+                      ) : null}
+
                       <InputGroup label="Structure Sanitaire" icon={<i className="fa-solid fa-hospital"></i>}>
                         <select name="nomStructuresSanitaire" value={formData.nomStructuresSanitaire} onChange={handleInputChange} className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-xs font-bold focus:border-red-600 outline-none transition-all" required>
                           <option value="">Sélectionner une structure</option>
@@ -447,10 +476,9 @@ const App: React.FC = () => {
               )}
             </div>
             
-            {/* FLUX D'ACTIVITÉ MASQUÉ POUR LE VISITEUR SUR LA PAGE DE CONNEXION */}
             {isAgentAuthenticated && (
               <div className="lg:col-span-5">
-                <HistoryList records={records} />
+                <HistoryList records={records} currentUser={currentUser} />
               </div>
             )}
           </div>

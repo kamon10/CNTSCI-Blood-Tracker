@@ -1,6 +1,6 @@
 
-import React, { useMemo, useState } from 'react';
-import { DistributionData, CNTSCI_CENTERS, BLOOD_GROUPS, PRODUCT_TYPES } from '../types.ts';
+import React, { useMemo, useState, useEffect } from 'react';
+import { DistributionData, CNTSCI_CENTERS, BLOOD_GROUPS, PRODUCT_TYPES, User } from '../types.ts';
 
 interface RecapViewProps {
   records: DistributionData[];
@@ -8,13 +8,32 @@ interface RecapViewProps {
   onRefresh?: () => void;
   isSyncing?: boolean;
   isAuthenticated?: boolean;
+  currentUser?: User | null;
 }
 
-const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, isAuthenticated }) => {
+const SUPER_CENTER_VALUE = "TOUS LES CENTRES CNTSCI";
+
+const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, isAuthenticated, currentUser }) => {
+  const isSuperAgent = currentUser?.centreAffectation === SUPER_CENTER_VALUE;
+  
+  // Initialisation du site sélectionné : si agent standard, on force son centre
+  const [selectedSite, setSelectedSite] = useState(() => {
+    if (isAuthenticated && currentUser && !isSuperAgent) {
+      return currentUser.centreAffectation;
+    }
+    return 'TOUS LES SITES';
+  });
+
   const [selectedDay, setSelectedDay] = useState<string>('TOUS');
   const [selectedMonth, setSelectedMonth] = useState((new Date().getMonth() + 1).toString().padStart(2, '0'));
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
-  const [selectedSite, setSelectedSite] = useState('TOUS LES SITES');
+
+  // Mise à jour du site si l'utilisateur change ou se connecte
+  useEffect(() => {
+    if (isAuthenticated && currentUser && !isSuperAgent) {
+      setSelectedSite(currentUser.centreAffectation);
+    }
+  }, [isAuthenticated, currentUser, isSuperAgent]);
 
   const months = [
     { v: '01', l: 'JANVIER' }, { v: '02', l: 'FÉVRIER' }, { v: '03', l: 'MARS' }, { v: '04', l: 'AVRIL' },
@@ -36,8 +55,25 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, is
     return { d: '', m: '', y: '' };
   };
 
-  const filteredAnnual = useMemo(() => records.filter(r => parseDate(r.dateDistribution).y === selectedYear), [records, selectedYear]);
-  const filteredMonthly = useMemo(() => filteredAnnual.filter(r => parseDate(r.dateDistribution).m === selectedMonth && (selectedSite === 'TOUS LES SITES' || r.centreCntsci === selectedSite)), [filteredAnnual, selectedMonth, selectedSite]);
+  // Filtrage des records de base : si agent standard, on ne prend QUE son centre
+  const baseRecords = useMemo(() => {
+    if (isAuthenticated && currentUser && !isSuperAgent) {
+      return records.filter(r => r.centreCntsci === currentUser.centreAffectation);
+    }
+    return records;
+  }, [records, isAuthenticated, currentUser, isSuperAgent]);
+
+  const filteredAnnual = useMemo(() => baseRecords.filter(r => parseDate(r.dateDistribution).y === selectedYear), [baseRecords, selectedYear]);
+  
+  const filteredMonthly = useMemo(() => {
+    return filteredAnnual.filter(r => {
+      const d = parseDate(r.dateDistribution);
+      const monthMatch = d.m === selectedMonth;
+      const siteMatch = selectedSite === 'TOUS LES SITES' || r.centreCntsci === selectedSite;
+      return monthMatch && siteMatch;
+    });
+  }, [filteredAnnual, selectedMonth, selectedSite]);
+
   const filteredDaily = useMemo(() => {
     if (selectedDay === 'TOUS') return filteredMonthly;
     return filteredMonthly.filter(r => parseDate(r.dateDistribution).d === selectedDay);
@@ -87,7 +123,7 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, is
 
   return (
     <div className="space-y-12 pb-20">
-      {/* BARRE DE FILTRES - VERROUILLÉE POUR VISITEUR */}
+      {/* BARRE DE FILTRES */}
       <div className={`bg-white p-6 rounded-[2.5rem] shadow-2xl flex flex-wrap items-center gap-6 border border-slate-100 sticky top-28 z-40 transition-all ${!isAuthenticated ? 'bg-slate-50' : ''}`}>
         
         {!isAuthenticated && (
@@ -99,7 +135,7 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, is
           </div>
         )}
 
-        {/* Sélecteurs de Date - FORCÉS DISABLED */}
+        {/* Sélecteurs de Date */}
         <div className={`flex bg-slate-50 p-1.5 rounded-2xl border border-slate-200 transition-all ${!isAuthenticated ? 'grayscale opacity-50 blur-[0.5px]' : ''}`}>
            <div className="flex items-center gap-2 px-4 py-2 border-r border-slate-200">
              <i className="fa-solid fa-calendar-day text-blue-600 text-sm"></i>
@@ -135,21 +171,28 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, is
            </select>
         </div>
 
-        {/* Sélecteur de Centre - FORCÉ DISABLED */}
+        {/* Sélecteur de Centre - Masqué ou Verrouillé si Agent Standard */}
         <div className={`flex-1 flex items-center gap-3 bg-slate-50 px-5 py-3 rounded-2xl border border-slate-200 transition-all ${!isAuthenticated ? 'grayscale opacity-50 blur-[0.5px]' : ''}`}>
           <i className="fa-solid fa-map-pin text-red-500"></i>
-          <select 
-            disabled={!isAuthenticated} 
-            value={selectedSite} 
-            onChange={e => setSelectedSite(e.target.value)} 
-            className="w-full bg-transparent font-black text-xs uppercase outline-none cursor-pointer disabled:cursor-not-allowed"
-          >
-            <option value="TOUS LES SITES">TOUS LES CENTRES CNTSCI</option>
-            {CNTSCI_CENTERS.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+          {isAuthenticated && !isSuperAgent ? (
+            <div className="flex flex-col">
+              <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest">Votre Centre</span>
+              <span className="text-[10px] font-black text-slate-900 uppercase">{currentUser?.centreAffectation}</span>
+            </div>
+          ) : (
+            <select 
+              disabled={!isAuthenticated} 
+              value={selectedSite} 
+              onChange={e => setSelectedSite(e.target.value)} 
+              className="w-full bg-transparent font-black text-xs uppercase outline-none cursor-pointer disabled:cursor-not-allowed"
+            >
+              <option value="TOUS LES SITES">TOUS LES CENTRES CNTSCI</option>
+              {CNTSCI_CENTERS.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          )}
         </div>
 
-        {/* Bouton Rafraîchir - FORCÉ DISABLED */}
+        {/* Bouton Rafraîchir */}
         <button 
           onClick={onRefresh} 
           disabled={isSyncing || !isAuthenticated} 
@@ -168,7 +211,10 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, is
       <section>
         <div className="flex items-center gap-3 mb-6">
           <div className="w-1.5 h-6 bg-slate-400 rounded-full"></div>
-          <h2 className="text-lg font-black uppercase tracking-tighter text-slate-800 opacity-60">Perspective Annuelle <span className="text-slate-500">{selectedYear}</span></h2>
+          <h2 className="text-lg font-black uppercase tracking-tighter text-slate-800 opacity-60">
+            Perspective Annuelle <span className="text-slate-500">{selectedYear}</span>
+            {isAuthenticated && !isSuperAgent && <span className="ml-3 text-red-600 text-sm">| {currentUser?.centreAffectation}</span>}
+          </h2>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <AnnualCard icon="fa-solid fa-globe" title="Total" value={annualStats.total} sub="Cumul Année" />
@@ -200,55 +246,66 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, is
         </div>
       </section>
 
-      {/* REGISTRE DE DISTRIBUTION */}
-      <section className="bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden">
-        <div className="px-10 py-8 border-b border-slate-50 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <i className="fa-solid fa-table-cells text-red-600 text-xl"></i>
-            <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">Registre détaillé</h2>
+      {/* REGISTRE DE DISTRIBUTION - MASQUÉ POUR LES VISITEURS */}
+      {isAuthenticated ? (
+        <section className="bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-700">
+          <div className="px-10 py-8 border-b border-slate-50 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <i className="fa-solid fa-table-cells text-red-600 text-xl"></i>
+              <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">Registre détaillé</h2>
+            </div>
+            <span className="text-[8px] font-black bg-green-50 text-green-600 px-3 py-1 rounded-full border border-green-100 uppercase tracking-widest">Vue Agent</span>
           </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                  <th className="px-6 py-4">Site</th>
+                  <th className="px-6 py-4">Structure</th>
+                  <th className="px-6 py-4">Produit</th>
+                  {BLOOD_GROUPS.map(g => (
+                    <th key={g} className="px-3 py-4 text-center">{g}</th>
+                  ))}
+                  <th className="px-8 py-4 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {Object.keys(matrixData).length === 0 ? (
+                  <tr><td colSpan={14} className="py-20 text-center text-[10px] font-black uppercase text-slate-300">Aucune donnée trouvée</td></tr>
+                ) : (
+                  Object.entries(matrixData).map(([siteName, siteData]: any) => (
+                    <React.Fragment key={siteName}>
+                      {Object.entries(siteData.structs).map(([structName, structData]: any, sIdx) => (
+                        <React.Fragment key={structName}>
+                          {Object.entries(structData.prods).map(([prodName, prodData]: any, pIdx) => (
+                            <tr key={prodName} className="hover:bg-slate-50 transition-colors">
+                              <td className="px-6 py-4 text-[9px] font-black text-red-600">{sIdx === 0 && pIdx === 0 ? siteName : ''}</td>
+                              <td className="px-6 py-4 text-[10px] font-bold text-slate-700">{pIdx === 0 ? structName : ''}</td>
+                              <td className="px-6 py-4"><span className="px-2 py-1 rounded bg-slate-100 text-[8px] font-black">{prodName}</span></td>
+                              {BLOOD_GROUPS.map(g => (
+                                <td key={g} className={`px-3 py-4 text-center font-black text-xs ${(prodData.grps[g] || 0) > 0 ? 'text-slate-900' : 'text-slate-200'}`}>{prodData.grps[g] || 0}</td>
+                              ))}
+                              <td className="px-8 py-4 text-right font-black text-red-600">{prodData.total}</td>
+                            </tr>
+                          ))}
+                        </React.Fragment>
+                      ))}
+                    </React.Fragment>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : (
+        <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-[3rem] py-16 text-center">
+           <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center text-slate-300 mx-auto mb-6 shadow-sm">
+             <i className="fa-solid fa-eye-slash text-2xl"></i>
+           </div>
+           <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest">Registre confidentiel</h3>
+           <p className="text-[10px] font-bold text-slate-300 uppercase mt-2">Connectez-vous en tant qu'agent pour voir le détail des structures</p>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                <th className="px-6 py-4">Site</th>
-                <th className="px-6 py-4">Structure</th>
-                <th className="px-6 py-4">Produit</th>
-                {BLOOD_GROUPS.map(g => (
-                  <th key={g} className="px-3 py-4 text-center">{g}</th>
-                ))}
-                <th className="px-8 py-4 text-right">Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {Object.keys(matrixData).length === 0 ? (
-                <tr><td colSpan={14} className="py-20 text-center text-[10px] font-black uppercase text-slate-300">Aucune donnée trouvée</td></tr>
-              ) : (
-                Object.entries(matrixData).map(([siteName, siteData]: any) => (
-                  <React.Fragment key={siteName}>
-                    {Object.entries(siteData.structs).map(([structName, structData]: any, sIdx) => (
-                      <React.Fragment key={structName}>
-                        {Object.entries(structData.prods).map(([prodName, prodData]: any, pIdx) => (
-                          <tr key={prodName} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-6 py-4 text-[9px] font-black text-red-600">{sIdx === 0 && pIdx === 0 ? siteName : ''}</td>
-                            <td className="px-6 py-4 text-[10px] font-bold text-slate-700">{pIdx === 0 ? structName : ''}</td>
-                            <td className="px-6 py-4"><span className="px-2 py-1 rounded bg-slate-100 text-[8px] font-black">{prodName}</span></td>
-                            {BLOOD_GROUPS.map(g => (
-                              <td key={g} className={`px-3 py-4 text-center font-black text-xs ${(prodData.grps[g] || 0) > 0 ? 'text-slate-900' : 'text-slate-200'}`}>{prodData.grps[g] || 0}</td>
-                            ))}
-                            <td className="px-8 py-4 text-right font-black text-red-600">{prodData.total}</td>
-                          </tr>
-                        ))}
-                      </React.Fragment>
-                    ))}
-                  </React.Fragment>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      )}
     </div>
   );
 };

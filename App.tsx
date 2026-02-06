@@ -224,10 +224,10 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
       <header className="sticky top-0 z-[100] px-4 pt-4 md:px-8">
-        <div className="max-w-7xl mx-auto bg-slate-900 p-4 rounded-[2rem] shadow-2xl flex justify-between items-center ring-1 ring-white/10">
-          <div className="flex items-center gap-4 pl-2">
-            <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-red-600/20">
-              <i className="fa-solid fa-droplet"></i>
+        <div className="max-w-7xl mx-auto bg-slate-900 p-3 sm:p-4 rounded-[1.5rem] sm:rounded-[2rem] shadow-2xl flex justify-between items-center ring-1 ring-white/10">
+          <div className="flex items-center gap-3 sm:gap-4 pl-1 sm:pl-2">
+            <div className="w-8 h-8 sm:w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-red-600/20">
+              <i className="fa-solid fa-droplet text-sm sm:text-base"></i>
             </div>
             <div className="hidden lg:block">
               <h1 className="text-white font-black text-sm uppercase tracking-tighter">CNTSCI <span className="text-red-500">Flux</span></h1>
@@ -235,52 +235,54 @@ const App: React.FC = () => {
             </div>
           </div>
           
-          <div className="flex bg-white/5 p-1 rounded-2xl border border-white/5">
+          <div className="flex bg-white/5 p-1 rounded-2xl border border-white/5 mx-2">
             <button onClick={() => setActiveTab('recap')} className={`px-3 sm:px-6 py-2.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'recap' ? 'bg-white text-slate-900 shadow-xl' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
-              <i className="fa-solid fa-chart-pie mr-2"></i> Recap
+              <i className="fa-solid fa-chart-pie md:mr-2"></i> <span className="hidden md:inline">Recap</span>
             </button>
             {isAgentAuthenticated && (
               <>
                 <button onClick={() => setActiveTab('center')} className={`px-3 sm:px-6 py-2.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'center' ? 'bg-white text-slate-900 shadow-xl' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
-                  <i className="fa-solid fa-hospital mr-2"></i> Centre
+                  <i className="fa-solid fa-hospital md:mr-2"></i> <span className="hidden md:inline">Centre</span>
                 </button>
                 <button onClick={() => setActiveTab('form')} className={`px-3 sm:px-6 py-2.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'form' ? 'bg-white text-slate-900 shadow-xl' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
-                  <i className="fa-solid fa-plus-circle mr-2"></i> Saisie
+                  <i className="fa-solid fa-plus-circle md:mr-2"></i> <span className="hidden md:inline">Saisie</span>
                 </button>
                 {isAdmin && (
                   <button onClick={() => setActiveTab('admin')} className={`px-3 sm:px-6 py-2.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'admin' ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-600/20' : 'text-indigo-400 hover:text-white hover:bg-white/5'}`}>
-                    <i className="fa-solid fa-user-shield mr-2"></i> Admin
+                    <i className="fa-solid fa-user-shield md:mr-2"></i> <span className="hidden md:inline">Admin</span>
                   </button>
                 )}
               </>
             )}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3">
             {!isAgentAuthenticated && (
               <button 
                 onClick={() => setActiveTab('form')}
-                className="hidden md:flex items-center gap-3 bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-2xl transition-all shadow-xl shadow-red-600/40 active:scale-95 border border-red-500/50"
+                className="flex items-center gap-2 sm:gap-3 bg-red-600 hover:bg-red-700 text-white px-3 sm:px-5 py-2.5 rounded-2xl transition-all shadow-xl shadow-red-600/40 active:scale-95 border border-red-500/50"
+                title="Connexion Agent"
               >
                 <i className="fa-solid fa-user-shield text-xs"></i>
-                <span className="text-[10px] font-black uppercase tracking-widest">Connecter Agent</span>
+                <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Connecter Agent</span>
               </button>
             )}
 
-            <button onClick={() => setShowSettings(!showSettings)} className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/5 rounded-xl transition-all">
+            <button onClick={() => setShowSettings(!showSettings)} className="w-8 h-8 sm:w-10 h-10 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/5 rounded-xl transition-all">
               <i className="fa-solid fa-gear"></i>
             </button>
 
             {currentUser && (
-              <div className="flex items-center gap-3 ml-1">
+              <div className="flex items-center gap-2 sm:gap-3 ml-1">
                 <div className="hidden md:flex flex-col items-end leading-none">
                   <span className={`text-[8px] font-black uppercase mb-0.5 tracking-tighter ${isAgentAuthenticated ? 'text-green-500' : 'text-amber-500'}`}>
                     {isAgentAuthenticated ? 'AGENT' : 'VISITEUR'}
                   </span>
                   <span className="text-[10px] font-black text-white uppercase">{currentUser.nomAgent}</span>
                 </div>
-                <button onClick={handleLogout} className="px-4 py-2 bg-white/5 hover:bg-red-600/20 text-slate-400 hover:text-red-500 rounded-xl border border-white/5 transition-all text-[10px] font-black uppercase tracking-widest">
-                  Sortie
+                <button onClick={handleLogout} className="px-3 sm:px-4 py-2 bg-white/5 hover:bg-red-600/20 text-slate-400 hover:text-red-500 rounded-xl border border-white/5 transition-all text-[10px] font-black uppercase tracking-widest">
+                  <i className="fa-solid fa-right-from-bracket sm:hidden"></i>
+                  <span className="hidden sm:inline">Sortie</span>
                 </button>
               </div>
             )}

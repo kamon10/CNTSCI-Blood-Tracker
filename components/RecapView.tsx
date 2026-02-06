@@ -14,9 +14,12 @@ interface RecapViewProps {
 const SUPER_CENTER_VALUE = "TOUS LES CENTRES CNTSCI";
 
 const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, isAuthenticated, currentUser }) => {
-  const isSuperAgent = currentUser?.centreAffectation === SUPER_CENTER_VALUE;
+  // Déterminer si l'utilisateur est un superviseur global
+  const isSuperAgent = useMemo(() => {
+    return currentUser?.centreAffectation === SUPER_CENTER_VALUE || currentUser?.centreAffectation === "DIRECTION GENERALE";
+  }, [currentUser]);
   
-  // Initialisation du site sélectionné : si agent standard, on force son centre
+  // Initialisation du site sélectionné : si agent standard, on force son centre. Si superviseur, "TOUS LES SITES" par défaut.
   const [selectedSite, setSelectedSite] = useState(() => {
     if (isAuthenticated && currentUser && !isSuperAgent) {
       return currentUser.centreAffectation;
@@ -28,10 +31,17 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, is
   const [selectedMonth, setSelectedMonth] = useState((new Date().getMonth() + 1).toString().padStart(2, '0'));
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
 
-  // Mise à jour du site si l'utilisateur change ou se connecte
+  // Synchronisation du site sélectionné lors d'un changement d'utilisateur
   useEffect(() => {
-    if (isAuthenticated && currentUser && !isSuperAgent) {
-      setSelectedSite(currentUser.centreAffectation);
+    if (isAuthenticated && currentUser) {
+      if (!isSuperAgent) {
+        setSelectedSite(currentUser.centreAffectation);
+      } else {
+        // Un superviseur garde la possibilité de voir tous les sites
+        if (selectedSite !== 'TOUS LES SITES' && !CNTSCI_CENTERS.includes(selectedSite)) {
+            setSelectedSite('TOUS LES SITES');
+        }
+      }
     }
   }, [isAuthenticated, currentUser, isSuperAgent]);
 
@@ -55,7 +65,9 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, is
     return { d: '', m: '', y: '' };
   };
 
-  // Filtrage des records de base : si agent standard, on ne prend QUE son centre
+  // Filtrage des records de base : 
+  // - Si agent standard (non superviseur), on restreint strictement à son centre d'affectation.
+  // - Si superviseur ou visiteur, on garde tous les records pour permettre le filtrage global.
   const baseRecords = useMemo(() => {
     if (isAuthenticated && currentUser && !isSuperAgent) {
       return records.filter(r => r.centreCntsci === currentUser.centreAffectation);
@@ -171,7 +183,7 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, is
            </select>
         </div>
 
-        {/* Sélecteur de Centre - Masqué ou Verrouillé si Agent Standard */}
+        {/* Sélecteur de Centre - Déverrouillé pour Super Agents */}
         <div className={`flex-1 flex items-center gap-3 bg-slate-50 px-5 py-3 rounded-2xl border border-slate-200 transition-all ${!isAuthenticated ? 'grayscale opacity-50 blur-[0.5px]' : ''}`}>
           <i className="fa-solid fa-map-pin text-red-500"></i>
           {isAuthenticated && !isSuperAgent ? (
@@ -216,13 +228,12 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, is
             {isAuthenticated && !isSuperAgent && <span className="ml-3 text-red-600 text-sm">| {currentUser?.centreAffectation}</span>}
           </h2>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <AnnualCard icon="fa-solid fa-globe" title="Total" value={annualStats.total} sub="Cumul Année" />
           <AnnualCard icon="fa-solid fa-droplet text-red-500" title="CGR Adulte" value={annualStats.cgrAdulte} />
           <AnnualCard icon="fa-solid fa-child-reaching text-rose-500" title="CGR Péd." value={annualStats.cgrPedia} />
           <AnnualCard icon="fa-solid fa-vial text-blue-500" title="Plasma" value={annualStats.plasma} />
           <AnnualCard icon="fa-solid fa-flask-vial text-indigo-500" title="Plaquettes" value={annualStats.plaquettes} />
-          <AnnualCard icon="fa-solid fa-hospital-user text-slate-500" title="Structures" value={annualStats.structures.size} />
         </div>
       </section>
 
@@ -246,7 +257,7 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, is
         </div>
       </section>
 
-      {/* REGISTRE DE DISTRIBUTION - MASQUÉ POUR LES VISITEURS */}
+      {/* REGISTRE DE DISTRIBUTION - PLEIN ACCÈS POUR AGENTS ET SUPERVISEURS */}
       {isAuthenticated ? (
         <section className="bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-700">
           <div className="px-10 py-8 border-b border-slate-50 flex items-center justify-between">
@@ -254,7 +265,10 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, is
               <i className="fa-solid fa-table-cells text-red-600 text-xl"></i>
               <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">Registre détaillé</h2>
             </div>
-            <span className="text-[8px] font-black bg-green-50 text-green-600 px-3 py-1 rounded-full border border-green-100 uppercase tracking-widest">Vue Agent</span>
+            <div className="flex items-center gap-2">
+              {isSuperAgent && <span className="text-[8px] font-black bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full border border-indigo-100 uppercase tracking-widest">Vue Superviseur</span>}
+              <span className="text-[8px] font-black bg-green-50 text-green-600 px-3 py-1 rounded-full border border-green-100 uppercase tracking-widest">Session Active</span>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -271,7 +285,7 @@ const RecapView: React.FC<RecapViewProps> = ({ records, onRefresh, isSyncing, is
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {Object.keys(matrixData).length === 0 ? (
-                  <tr><td colSpan={14} className="py-20 text-center text-[10px] font-black uppercase text-slate-300">Aucune donnée trouvée</td></tr>
+                  <tr><td colSpan={14} className="py-20 text-center text-[10px] font-black uppercase text-slate-300">Aucune donnée trouvée pour cette période</td></tr>
                 ) : (
                   Object.entries(matrixData).map(([siteName, siteData]: any) => (
                     <React.Fragment key={siteName}>

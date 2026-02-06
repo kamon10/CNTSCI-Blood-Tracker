@@ -5,6 +5,7 @@ import InputGroup from './components/InputGroup.tsx';
 import HistoryList from './components/HistoryList.tsx';
 import RecapView from './components/RecapView.tsx';
 import CenterRecapView from './components/CenterRecapView.tsx';
+import UserManagementView from './components/UserManagementView.tsx';
 import ScriptInstruction from './components/ScriptInstruction.tsx';
 import { analyzeDistribution } from './services/geminiService.ts';
 
@@ -12,7 +13,7 @@ const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbwmJkITojb2tBgE5O2d
 const SUPER_CENTER_VALUE = "TOUS LES CENTRES CNTSCI";
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'form' | 'recap' | 'center'>('recap');
+  const [activeTab, setActiveTab] = useState<'form' | 'recap' | 'center' | 'admin'>('recap');
   const [isSyncing, setIsSyncing] = useState(false);
   const isFetchingRef = useRef(false);
   
@@ -63,6 +64,11 @@ const App: React.FC = () => {
   // Vérifie si l'utilisateur a les droits sur tous les centres
   const isSuperAgent = useMemo(() => {
     return currentUser?.centreAffectation === SUPER_CENTER_VALUE;
+  }, [currentUser]);
+
+  // Vérifie si l'utilisateur est un administrateur DIRECTION GENERALE
+  const isAdmin = useMemo(() => {
+    return currentUser?.centreAffectation === "DIRECTION GENERALE";
   }, [currentUser]);
 
   useEffect(() => {
@@ -223,24 +229,29 @@ const App: React.FC = () => {
             <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-red-600/20">
               <i className="fa-solid fa-droplet"></i>
             </div>
-            <div className="hidden sm:block">
+            <div className="hidden lg:block">
               <h1 className="text-white font-black text-sm uppercase tracking-tighter">CNTSCI <span className="text-red-500">Flux</span></h1>
               <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">PRO v15.0</p>
             </div>
           </div>
           
           <div className="flex bg-white/5 p-1 rounded-2xl border border-white/5">
-            <button onClick={() => setActiveTab('recap')} className={`px-4 sm:px-6 py-2.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'recap' ? 'bg-white text-slate-900 shadow-xl' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+            <button onClick={() => setActiveTab('recap')} className={`px-3 sm:px-6 py-2.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'recap' ? 'bg-white text-slate-900 shadow-xl' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
               <i className="fa-solid fa-chart-pie mr-2"></i> Recap
             </button>
             {isAgentAuthenticated && (
               <>
-                <button onClick={() => setActiveTab('center')} className={`px-4 sm:px-6 py-2.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'center' ? 'bg-white text-slate-900 shadow-xl' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+                <button onClick={() => setActiveTab('center')} className={`px-3 sm:px-6 py-2.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'center' ? 'bg-white text-slate-900 shadow-xl' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
                   <i className="fa-solid fa-hospital mr-2"></i> Centre
                 </button>
-                <button onClick={() => setActiveTab('form')} className={`px-4 sm:px-6 py-2.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'form' ? 'bg-white text-slate-900 shadow-xl' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+                <button onClick={() => setActiveTab('form')} className={`px-3 sm:px-6 py-2.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'form' ? 'bg-white text-slate-900 shadow-xl' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
                   <i className="fa-solid fa-plus-circle mr-2"></i> Saisie
                 </button>
+                {isAdmin && (
+                  <button onClick={() => setActiveTab('admin')} className={`px-3 sm:px-6 py-2.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'admin' ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-600/20' : 'text-indigo-400 hover:text-white hover:bg-white/5'}`}>
+                    <i className="fa-solid fa-user-shield mr-2"></i> Admin
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -275,18 +286,6 @@ const App: React.FC = () => {
             )}
           </div>
         </div>
-        
-        {!isAgentAuthenticated && (
-          <div className="md:hidden mt-4 px-2">
-            <button 
-              onClick={() => setActiveTab('form')}
-              className="w-full flex items-center justify-center gap-3 bg-red-600 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-red-600/20 active:scale-95 transition-all"
-            >
-              <i className="fa-solid fa-user-shield"></i>
-              Connecter un compte Agent
-            </button>
-          </div>
-        )}
       </header>
 
       <main className="max-w-7xl mx-auto px-4 md:px-8 pt-8">
@@ -348,6 +347,14 @@ const App: React.FC = () => {
               </button>
             </div>
           )
+        )}
+
+        {activeTab === 'admin' && isAdmin && (
+          <UserManagementView 
+            scriptUrl={scriptUrl} 
+            onRefresh={() => fetchRecordsAndAutoLogin(false)}
+            isSyncing={isSyncing}
+          />
         )}
 
         {activeTab === 'form' && (

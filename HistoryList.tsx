@@ -1,13 +1,23 @@
 
-import React from 'react';
-import { DistributionData } from '../types.ts';
+import React, { useMemo } from 'react';
+import { DistributionData, User } from '../types.ts';
 
 interface HistoryListProps {
   records: DistributionData[];
+  currentUser?: User | null;
 }
 
-const HistoryList: React.FC<HistoryListProps> = ({ records }) => {
+const SUPER_CENTER_VALUE = "TOUS LES CENTRES CNTSCI";
+
+const HistoryList: React.FC<HistoryListProps> = ({ records, currentUser }) => {
   const safeRecords = Array.isArray(records) ? records : [];
+  
+  const filteredRecords = useMemo(() => {
+    if (!currentUser || currentUser.centreAffectation === SUPER_CENTER_VALUE) {
+      return safeRecords;
+    }
+    return safeRecords.filter(r => r.centreCntsci === currentUser.centreAffectation);
+  }, [safeRecords, currentUser]);
   
   return (
     <div className="bg-white rounded-[2.5rem] p-8 shadow-2xl border border-slate-100 overflow-hidden">
@@ -16,18 +26,23 @@ const HistoryList: React.FC<HistoryListProps> = ({ records }) => {
           <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-600 shadow-inner">
             <i className="fa-solid fa-clock-rotate-left"></i>
           </div>
-          <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Flux d'Activité</h3>
+          <div>
+            <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Flux d'Activité</h3>
+            {currentUser && currentUser.centreAffectation !== SUPER_CENTER_VALUE && (
+              <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{currentUser.centreAffectation}</p>
+            )}
+          </div>
         </div>
         <span className="text-[9px] font-bold bg-red-50 text-red-600 px-3 py-1 rounded-full border border-red-100 uppercase tracking-widest">LIVE</span>
       </div>
 
       <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
-        {safeRecords.length === 0 ? (
+        {filteredRecords.length === 0 ? (
           <div className="text-center py-12 border-2 border-dashed border-slate-100 rounded-[2rem]">
             <p className="text-xs font-bold text-slate-300 uppercase italic">Aucun mouvement</p>
           </div>
         ) : (
-          [...safeRecords].reverse().map((record, idx) => {
+          [...filteredRecords].reverse().map((record, idx) => {
             const time = record.horodateur && record.horodateur.includes(' ') 
               ? record.horodateur.split(' ')[1] 
               : '--:--';

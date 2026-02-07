@@ -3,11 +3,26 @@ import React from 'react';
 
 const ScriptInstruction: React.FC = () => {
   const code = `/**
- * SCRIPT CNTSCI v15.1 - GESTION UTILISATEURS ET AGENTS
+ * SCRIPT CNTSCI v15.3 - ALIGNEMENT STRUCTURE UTILISATEUR
+ * IMPORTANT: Ce script place "Nombre de poches servie" en 5ème colonne.
  */
 
 const SHEET_DIST = "BASE DIST"; 
 const SHEET_USERS = "USERS";
+
+// En-têtes alignés sur votre demande
+const HEADERS_DIST = [
+  "Horodateur", 
+  "Nom de l'agent", 
+  "Date de distribution", 
+  "Centre CNTSCI", 
+  "Nombre de poches servie", // 5ème colonne comme demandé
+  "Structure Sanitaire Servie", 
+  "Type Produit", 
+  "SA_GROUPE"
+];
+
+const HEADERS_USERS = ["Nom de l'agent", "Login", "Mot de passe", "Centre d'Affectation"];
 
 function doGet(e) { return handleRequest(e); }
 function doPost(e) { return handleRequest(e); }
@@ -20,8 +35,8 @@ function handleRequest(e) {
     const action = e.parameter.action;
     if (!action) return createResponse({status:"error", message:"Action manquante"});
 
-    let dSheet = getOrCreate(ss, SHEET_DIST, ["Horodateur", "Nom de l'agent", "Date de distribution", "Centre CNTSCI", "Structure Sanitaire Servie", "Type Produit", "SA_GROUPE", "Quantité servie"]);
-    let uSheet = getOrCreate(ss, SHEET_USERS, ["Nom de l'agent", "Login", "Mot de passe", "Centre d'Affectation"]);
+    let dSheet = getOrCreate(ss, SHEET_DIST, HEADERS_DIST);
+    let uSheet = getOrCreate(ss, SHEET_USERS, HEADERS_USERS);
 
     if (action === 'get_users') {
       const last = uSheet.getLastRow();
@@ -34,11 +49,29 @@ function handleRequest(e) {
       const last = dSheet.getLastRow();
       if (last < 2) return createResponse([]);
       const data = dSheet.getRange(2, 1, last-1, 8).getValues();
-      return createResponse(data.map(r => ({horodateur: r[0], nomAgent: r[1], dateDistribution: r[2], centreCntsci: r[3], nomStructuresSanitaire: r[4], typeProduit: r[5], saGroupe: r[6], nbPoches: r[7]})));
+      return createResponse(data.map(r => ({
+        horodateur: r[0], 
+        nomAgent: r[1], 
+        dateDistribution: r[2], 
+        centreCntsci: r[3], 
+        nbPoches: Number(r[4]) || 0, // Tiré de la 5ème colonne
+        nomStructuresSanitaire: r[5] || "NON SPECIFIE", 
+        typeProduit: r[6] || "CGR ADULTE", 
+        saGroupe: r[7] || "O+"
+      })));
     }
 
     if (action === 'post_dist') {
-      dSheet.appendRow([e.parameter.horodateur || new Date().toLocaleString(), e.parameter.nomAgent, e.parameter.dateDistribution, e.parameter.centreCntsci, e.parameter.nomStructuresSanitaire, e.parameter.typeProduit, e.parameter.saGroupe, e.parameter.nbPoches || 0]);
+      dSheet.appendRow([
+        e.parameter.horodateur || new Date().toLocaleString(), 
+        e.parameter.nomAgent, 
+        e.parameter.dateDistribution, 
+        e.parameter.centreCntsci, 
+        e.parameter.nbPoches || 0, // Valeur insérée en 5ème colonne
+        e.parameter.nomStructuresSanitaire, 
+        e.parameter.typeProduit, 
+        e.parameter.saGroupe
+      ]);
       return createResponse({status:"success"});
     }
 
@@ -57,7 +90,15 @@ function handleRequest(e) {
 
 function getOrCreate(ss, n, h) {
   let s = ss.getSheetByName(n);
-  if(!s) { s = ss.insertSheet(n); s.appendRow(h); }
+  if(!s) { 
+    s = ss.insertSheet(n); 
+    s.appendRow(h); 
+  } else {
+    const currentHeaders = s.getRange(1, 1, 1, h.length).getValues()[0];
+    if (JSON.stringify(currentHeaders) !== JSON.stringify(h)) {
+       s.getRange(1, 1, 1, h.length).setValues([h]);
+    }
+  }
   return s;
 }
 
@@ -69,20 +110,25 @@ function createResponse(o) {
     <div className="space-y-4">
       <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white border border-indigo-500/30 shadow-2xl">
         <h4 className="text-indigo-400 font-black uppercase text-xs mb-4 flex items-center gap-2">
-          <i className="fa-solid fa-user-shield"></i> Configuration Transfusionnelle v15.1
+          <i className="fa-solid fa-triangle-exclamation text-amber-500"></i> Mise à jour requise : Script v15.3
         </h4>
         <div className="space-y-4 mb-8">
           <p className="text-[10px] font-bold text-slate-300 leading-relaxed">
-            <span className="text-amber-400 block mb-1 uppercase tracking-widest">Mise à jour : Gestion Agents</span>
-            Le script a été mis à jour pour permettre la création de comptes agents directement depuis l'interface Admin.
+            Pour que la colonne <span className="text-white">"Nombre de poches servie"</span> soit correctement lue par l'application :
+            <br/><br/>
+            1. Copiez ce nouveau code.<br/>
+            2. Remplacez votre script actuel dans Google Apps Script.<br/>
+            3. Cliquez sur <span className="text-white">Déployer > Nouvel envoi</span>.<br/>
+            4. L'application lira désormais la 5ème colonne de votre feuille pour les calculs.
           </p>
         </div>
         
         <button 
-          onClick={() => {navigator.clipboard.writeText(code); alert("Script v15.1 Copié !");}}
-          className="w-full bg-indigo-600 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-600/20"
+          onClick={() => {navigator.clipboard.writeText(code); alert("Script v15.3 Copié !");}}
+          className="w-full bg-indigo-600 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-indigo-500 transition-all flex items-center justify-center gap-3"
         >
-          Copier le code de mise à jour
+          <i className="fa-solid fa-copy"></i>
+          Copier le Script v15.3
         </button>
       </div>
     </div>

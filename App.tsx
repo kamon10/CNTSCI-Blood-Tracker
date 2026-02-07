@@ -9,23 +9,17 @@ import UserManagementView from './components/UserManagementView.tsx';
 import ScriptInstruction from './components/ScriptInstruction.tsx';
 import { analyzeDistribution } from './services/geminiService.ts';
 
-const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbwmJkITojb2tBgE5O2d-HaA__-y9wdtQO57XI0cl_A7kqRdn-5jnmhDwJezMwc-4e9oSQ/exec";
-const SUPER_CENTER_VALUE = "TOUS LES CENTRES CNTSCI";
+const FIXED_URL = "https://script.google.com/macros/s/AKfycbxI9UYR-8Lk4zw6D1FO1kSzZQY8qw7vKyAQu_selSTNql5vD3NTLXgrYNxNKyAZioI4Ow/exec";
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'form' | 'recap' | 'center' | 'admin'>('recap');
   const [isSyncing, setIsSyncing] = useState(false);
   const isFetchingRef = useRef(false);
   
-  const [scriptUrl, setScriptUrl] = useState<string>(() => {
-    try {
-      const saved = localStorage.getItem('cntsci_script_url_v15');
-      return saved || DEFAULT_URL;
-    } catch {
-      return DEFAULT_URL;
-    }
-  });
+  // URL figée par défaut
+  const [scriptUrl, setScriptUrl] = useState<string>(FIXED_URL);
   
+  // On n'affiche plus les paramètres par défaut car l'URL est déjà là
   const [showSettings, setShowSettings] = useState(false);
   
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -53,7 +47,7 @@ const App: React.FC = () => {
   const [records, setRecords] = useState<DistributionData[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
-  const [showToast, setShowToast] = useState<'success' | 'error' | 'sync' | 'auth_error' | 'url_saved' | null>(null);
+  const [showToast, setShowToast] = useState<'success' | 'error' | 'sync' | 'auth_error' | 'url_saved' | 'no_url' | null>(null);
 
   const isAgentAuthenticated = useMemo(() => {
     if (!currentUser) return false;
@@ -61,12 +55,11 @@ const App: React.FC = () => {
     return name !== "VISITEUR" && name !== "AUCUN" && name !== "";
   }, [currentUser]);
 
-  // Vérifie si l'utilisateur a les droits sur tous les centres
   const isSuperAgent = useMemo(() => {
-    return currentUser?.centreAffectation === SUPER_CENTER_VALUE;
+    const affectation = currentUser?.centreAffectation;
+    return affectation === "TOUS LES CENTRES CNTSCI" || affectation === "DIRECTION GENERALE";
   }, [currentUser]);
 
-  // Vérifie si l'utilisateur est un administrateur DIRECTION GENERALE
   const isAdmin = useMemo(() => {
     return currentUser?.centreAffectation === "DIRECTION GENERALE";
   }, [currentUser]);
@@ -76,9 +69,8 @@ const App: React.FC = () => {
       setFormData(prev => ({
         ...prev,
         nomAgent: currentUser.nomAgent,
-        // Si super agent, on initialise avec le premier centre de la liste s'il n'est pas déjà valide
-        centreCntsci: isSuperAgent ? CNTSCI_CENTERS[0] : currentUser.centreAffectation,
-        nomStructuresSanitaire: '' // Reset structure on user change
+        centreCntsci: isSuperAgent ? (prev.centreCntsci || CNTSCI_CENTERS[0]) : currentUser.centreAffectation,
+        nomStructuresSanitaire: '' 
       }));
     }
   }, [currentUser, isSuperAgent]);
@@ -89,7 +81,11 @@ const App: React.FC = () => {
 
   const fetchRecordsAndAutoLogin = useCallback(async (showNotification = false) => {
     const cleanUrl = scriptUrl.trim();
-    if (!cleanUrl || !cleanUrl.startsWith('http')) return;
+    if (!cleanUrl) {
+      if (showNotification) setShowToast('no_url');
+      return;
+    }
+    
     if (isFetchingRef.current) return;
     
     isFetchingRef.current = true;
@@ -100,7 +96,11 @@ const App: React.FC = () => {
       const distResponse = await fetch(`${cleanUrl}?action=get_dist&_t=${Date.now()}`);
       if (distResponse.ok) {
         const data = await distResponse.json();
-        if (Array.isArray(data)) setRecords(data);
+        if (Array.isArray(data)) {
+          setRecords(data);
+        }
+      } else {
+        throw new Error("Erreur serveur lors de la récupération des données");
       }
 
       if (!localStorage.getItem('cntsci_user_session')) {
@@ -126,11 +126,12 @@ const App: React.FC = () => {
   }, [scriptUrl]);
 
   useEffect(() => {
-    fetchRecordsAndAutoLogin();
-  }, [fetchRecordsAndAutoLogin]);
+    if (scriptUrl) fetchRecordsAndAutoLogin();
+  }, [fetchRecordsAndAutoLogin, scriptUrl]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!scriptUrl) { setShowToast('no_url'); return; }
     setIsLoggingIn(true);
     try {
       const resp = await fetch(`${scriptUrl.trim()}?action=get_users&_t=${Date.now()}`);
@@ -169,8 +170,13 @@ const App: React.FC = () => {
 
   const saveUrl = () => {
     const cleanUrl = scriptUrl.trim();
+    if (!cleanUrl.startsWith('https://script.google.com')) {
+      alert("L'URL doit commencer par https://script.google.com");
+      return;
+    }
     localStorage.setItem('cntsci_script_url_v15', cleanUrl);
     setShowToast('url_saved');
+    setShowSettings(false);
     fetchRecordsAndAutoLogin(true);
   };
 
@@ -178,7 +184,6 @@ const App: React.FC = () => {
     const { name, value } = e.target;
     setFormData(prev => {
       const newData = { ...prev, [name]: name === 'nbPoches' ? (value === '' ? '' : Math.max(0, parseInt(value) || 0)) : value };
-      // Si on change le centre, on réinitialise la structure
       if (name === 'centreCntsci') {
         newData.nomStructuresSanitaire = '';
       }
@@ -188,6 +193,7 @@ const App: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!scriptUrl) { setShowToast('no_url'); return; }
     setIsSubmitting(true);
     const now = new Date();
     const finalData = {
@@ -231,7 +237,7 @@ const App: React.FC = () => {
             </div>
             <div className="hidden lg:block">
               <h1 className="text-white font-black text-sm uppercase tracking-tighter">CNTSCI <span className="text-red-500">Flux</span></h1>
-              <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">PRO v15.0</p>
+              <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">PRO v15.3</p>
             </div>
           </div>
           
@@ -268,7 +274,7 @@ const App: React.FC = () => {
               </button>
             )}
 
-            <button onClick={() => setShowSettings(!showSettings)} className="w-8 h-8 sm:w-10 h-10 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/5 rounded-xl transition-all">
+            <button onClick={() => setShowSettings(!showSettings)} className={`w-8 h-8 sm:w-10 h-10 flex items-center justify-center rounded-xl transition-all ${showSettings ? 'bg-white text-slate-900' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
               <i className="fa-solid fa-gear"></i>
             </button>
 
@@ -292,24 +298,21 @@ const App: React.FC = () => {
 
       <main className="max-w-7xl mx-auto px-4 md:px-8 pt-8">
         {showSettings && (
-          <div className="mb-8 bg-white p-8 rounded-[2.5rem] shadow-2xl border border-slate-100 animate-in slide-in-from-top-4 duration-500">
+          <div className="mb-8 bg-white p-8 rounded-[2.5rem] shadow-2xl border-2 border-indigo-100 animate-in slide-in-from-top-4 duration-500">
             <h3 className="text-xs font-black uppercase tracking-widest text-slate-800 mb-6 flex items-center gap-2">
-              <i className="fa-solid fa-link text-indigo-500"></i> Configuration du Point de Terminaison
+              <i className="fa-solid fa-link text-indigo-500"></i> Configuration du Point de Terminaison Google Script
             </h3>
             <div className="flex flex-col sm:flex-row gap-4">
               <input 
                 type="text" 
                 value={scriptUrl} 
                 onChange={(e) => setScriptUrl(e.target.value)}
-                placeholder="URL Google Apps Script"
+                placeholder="URL de votre déploiement Google Apps Script"
                 className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
               />
               <button onClick={saveUrl} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all">
                 Mettre à jour
               </button>
-            </div>
-            <div className="mt-8 pt-8 border-t border-slate-100">
-               <ScriptInstruction />
             </div>
           </div>
         )}
@@ -413,11 +416,6 @@ const App: React.FC = () => {
                       <span className="text-[8px] font-black bg-red-50 text-red-600 px-3 py-1 rounded-full border border-red-100 uppercase mb-1">
                         Profil: {currentUser?.centreAffectation}
                       </span>
-                      {!isSuperAgent && (
-                         <span className="text-[10px] font-black text-slate-400 uppercase">
-                           Centre: {formData.centreCntsci}
-                         </span>
-                      )}
                     </div>
                   </div>
 
@@ -427,7 +425,6 @@ const App: React.FC = () => {
                         <input name="dateDistribution" type="date" value={formData.dateDistribution} onChange={handleInputChange} className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-xs font-bold focus:border-red-600 outline-none transition-all" />
                       </InputGroup>
                       
-                      {/* Affichage conditionnel du sélecteur de centre pour les Super Agents */}
                       {isSuperAgent ? (
                         <InputGroup label="Sélectionner le Centre" icon={<i className="fa-solid fa-building-shield"></i>}>
                           <select name="centreCntsci" value={formData.centreCntsci} onChange={handleInputChange} className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-xs font-bold focus:border-red-600 outline-none transition-all" required>
@@ -500,17 +497,20 @@ const App: React.FC = () => {
             showToast === 'success' ? 'bg-green-600 border-green-500 text-white' :
             showToast === 'auth_error' ? 'bg-amber-500 border-amber-400 text-white' :
             showToast === 'sync' ? 'bg-slate-900 border-slate-800 text-white' :
+            showToast === 'no_url' ? 'bg-amber-600 border-amber-500 text-white' :
             'bg-red-600 border-red-500 text-white'
           }`}>
             <i className={`fa-solid ${
               showToast === 'success' ? 'fa-circle-check' :
               showToast === 'sync' ? 'fa-sync fa-spin' :
+              showToast === 'no_url' ? 'fa-link-slash' :
               'fa-circle-exclamation'
             }`}></i>
             <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
               {showToast === 'success' ? 'Opération réussie' :
                showToast === 'auth_error' ? 'Identifiants incorrects' :
                showToast === 'url_saved' ? 'Configuration enregistrée' :
+               showToast === 'no_url' ? 'Vérifier la connexion' :
                showToast === 'sync' ? 'Mise à jour des données...' :
                'Une erreur est survenue'}
             </span>

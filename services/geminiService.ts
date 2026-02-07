@@ -2,26 +2,19 @@
 import { GoogleGenAI } from "@google/genai";
 import { DistributionData } from "../types.ts";
 
-// Accès sécurisé à la clé API pour éviter "process is not defined"
-const getApiKey = () => {
-  try {
-    // @ts-ignore
-    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
-      // @ts-ignore
-      return process.env.API_KEY;
-    }
-    return "";
-  } catch (e) {
-    return "";
-  }
-};
-
+/**
+ * Analyse une distribution de sang à l'aide de l'IA Gemini.
+ * Utilise la clé API fournie via process.env.API_KEY conformément aux directives.
+ */
 export const analyzeDistribution = async (data: DistributionData) => {
-  const apiKey = getApiKey();
-  if (!apiKey) return "Analyse indisponible (Clé API manquante).";
+  // Accès direct à process.env.API_KEY comme requis par les directives SDK
+  if (!process.env.API_KEY) {
+    return "Analyse indisponible (Clé API manquante).";
+  }
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
+    // Initialisation directe avec la clé API de l'environnement
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `Analyse cette saisie de distribution de sang unitaire pour le CNTSCI. 
@@ -39,6 +32,7 @@ export const analyzeDistribution = async (data: DistributionData) => {
       },
     });
 
+    // Extraction directe de la propriété .text comme requis
     return response.text || "Analyse indisponible.";
   } catch (error) {
     console.error("Gemini API Error:", error);
